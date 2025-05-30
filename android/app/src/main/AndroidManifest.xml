@@ -1,12 +1,48 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-<uses-permission android:name="android.permission.RECORD_AUDIO"/>
-<uses-permission android:name="android.permission.CALL_PHONE"/>
-<uses-permission android:name="android.permission.SEND_SMS"/>
+    <!-- Permisos de audio -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    
+    <!-- Permisos de comunicación -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.CALL_PHONE"/>
+    
+    <!-- Permisos de red -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    
+    <!-- Permisos de almacenamiento (Android 12 y anteriores) -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
+    
+    <!-- Permisos de contactos -->
+    <uses-permission android:name="android.permission.READ_CONTACTS"/>
+    <uses-permission android:name="android.permission.WRITE_CONTACTS"/>
+    
+    <!-- Permisos de ubicación -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+    
+    <!-- Permisos para sensores (shake detector) -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    
+    <!-- Permisos para notificaciones -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    
+    <!-- Permisos para ejecutar en segundo plano -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
+    
+    <!-- Permisos para emergencias -->
+    <uses-permission android:name="android.permission.CALL_PRIVILEGED"/>
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+
     <application
-        android:label="emergencia_assistant"
+        android:label="app_bullying"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
-        <service android:name=".VoiceService"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"

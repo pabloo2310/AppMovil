@@ -1,4 +1,4 @@
-# emergencia_assistant
+# app_bullying
 
 A new Flutter project.
 

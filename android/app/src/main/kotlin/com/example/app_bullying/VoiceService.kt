@@ -1,10 +1,12 @@
-package com.example.emergencia_assistant
+package com.example.bullyng_1
 
 import android.app.Service
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -17,6 +19,7 @@ class VoiceService : Service() {
     private lateinit var recognizer: SpeechRecognizer
     private lateinit var channel: MethodChannel
     private lateinit var engine: FlutterEngine
+    private val handler = Handler(Looper.getMainLooper())
 
     override fun onCreate() {
         super.onCreate()
@@ -55,7 +58,23 @@ class VoiceService : Service() {
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
 
+        // Escuchar el método desde Flutter
+        channel.setMethodCallHandler { call, result ->
+            if (call.method == "startVoiceService") {
+                val duration = call.argument<Double>("duration")?.toLong() ?: 30L
+                startListeningWithTimeout(duration * 1000) // Convertir a milisegundos
+                result.success(null)
+            } else {
+                result.notImplemented()
+            }
+        }
+    }
+
+    private fun startListeningWithTimeout(duration: Long) {
         startListening()
+        handler.postDelayed({
+            stopListening()
+        }, duration)
     }
 
     private fun startListening() {
@@ -64,6 +83,11 @@ class VoiceService : Service() {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-CL")
         }
         recognizer.startListening(intent)
+    }
+
+    private fun stopListening() {
+        recognizer.stopListening()
+        Log.d("VoiceService", "Grabación detenida después del tiempo especificado")
     }
 
     private fun realizarLlamada() {
@@ -86,6 +110,7 @@ class VoiceService : Service() {
     override fun onDestroy() {
         recognizer.destroy()
         engine.destroy()
+        handler.removeCallbacksAndMessages(null)
         super.onDestroy()
     }
 

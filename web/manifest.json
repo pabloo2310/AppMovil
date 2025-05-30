@@ -1,6 +1,6 @@
 {
-    "name": "emergencia_assistant",
-    "short_name": "emergencia_assistant",
+    "name": "app_bullying",
+    "short_name": "app_bullying",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

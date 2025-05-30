@@ -1,69 +1,47 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:app_bullying/routes/app_routes.dart';
+import 'package:app_bullying/themes/my_theme.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'package:app_bullying/services/services.dart';
 
-void main() {
-  runApp(const EmergenciaApp());
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey<ScaffoldMessengerState> rootScaffoldMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  ShakeDetectorService().init(onShakeDetected: () {
+    rootScaffoldMessengerKey.currentState?.showSnackBar(
+      const SnackBar(
+        content: Text('¡Sacudida detectada!'),
+        backgroundColor: Colors.deepOrange,
+        duration: Duration(seconds: 2),
+      ),
+    );
+  });
+
+  runApp(const MainApp());
 }
 
-class EmergenciaApp extends StatefulWidget {
-  const EmergenciaApp({super.key});
-
-  @override
-  State<EmergenciaApp> createState() => _EmergenciaAppState();
-}
-
-class _EmergenciaAppState extends State<EmergenciaApp> {
-  static const platform = MethodChannel('voice_channel');
-  String lastCommand = 'Esperando comando...';
-
-  @override
-  void initState() {
-    super.initState();
-    requestPermissions().then((_) {
-      platform.setMethodCallHandler(_onVoiceCommand);
-      startService(); // esto inicia el servicio automáticamente
-    });
-  }
-
-  Future<void> requestPermissions() async {
-    await [Permission.microphone, Permission.sms, Permission.phone].request();
-  }
-
-  Future<void> _onVoiceCommand(MethodCall call) async {
-    if (call.method == 'onCommandRecognized') {
-      setState(() {
-        lastCommand = call.arguments;
-      });
-    }
-  }
-
-  void startService() => platform.invokeMethod('startVoiceService');
-  void stopService() => platform.invokeMethod('stopVoiceService');
+class MainApp extends StatelessWidget {
+  const MainApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: Scaffold(
-        appBar: AppBar(title: const Text('Asistente de Emergencia')),
-        body: Center(
-          child: Text(lastCommand, style: const TextStyle(fontSize: 20)),
-        ),
-        floatingActionButton: Column(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            FloatingActionButton(
-              onPressed: startService,
-              child: const Icon(Icons.play_arrow),
-            ),
-            const SizedBox(height: 10),
-            FloatingActionButton(
-              onPressed: stopService,
-              child: const Icon(Icons.stop),
-            ),
-          ],
-        ),
-      ),
+      navigatorKey: navigatorKey,
+      scaffoldMessengerKey: rootScaffoldMessengerKey,
+      debugShowCheckedModeBanner: false,
+      title: 'B-Resol',
+      initialRoute: AppRoutes.initialRoute,
+      routes: AppRoutes.routes,
+      onGenerateRoute: AppRoutes.onGenerateRoute,
+      theme: MyTheme.myTheme,
     );
   }
 }
