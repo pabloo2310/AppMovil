@@ -4,6 +4,7 @@ import 'package:app_bullying/themes/my_theme.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:app_bullying/services/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final GlobalKey<ScaffoldMessengerState> rootScaffoldMessengerKey =
@@ -12,24 +13,31 @@ final GlobalKey<ScaffoldMessengerState> rootScaffoldMessengerKey =
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
+    name: 'AppBullying',
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  ShakeDetectorService().init(onShakeDetected: () {
-    rootScaffoldMessengerKey.currentState?.showSnackBar(
-      const SnackBar(
-        content: Text('¡Sacudida detectada!'),
-        backgroundColor: Colors.deepOrange,
-        duration: Duration(seconds: 2),
-      ),
-    );
-  });
+  ShakeDetectorService().init(
+    onShakeDetected: () {
+      rootScaffoldMessengerKey.currentState?.showSnackBar(
+        const SnackBar(
+          content: Text('¡Sacudida detectada!'),
+          backgroundColor: Colors.deepOrange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    },
+  );
 
-  runApp(const MainApp());
+  final user = FirebaseAuth.instance.currentUser;
+
+  runApp(MyApp(initialRoute: user != null ? 'home' : 'login'));
 }
 
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
+class MyApp extends StatelessWidget {
+  final String initialRoute;
+
+  const MyApp({required this.initialRoute, super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +46,7 @@ class MainApp extends StatelessWidget {
       scaffoldMessengerKey: rootScaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
       title: 'B-Resol',
-      initialRoute: AppRoutes.initialRoute,
+      initialRoute: initialRoute,
       routes: AppRoutes.routes,
       onGenerateRoute: AppRoutes.onGenerateRoute,
       theme: MyTheme.myTheme,

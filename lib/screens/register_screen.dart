@@ -15,6 +15,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _emergencyContactController =
+      TextEditingController();
 
   Future<void> _registerUser() async {
     try {
@@ -32,6 +34,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           'lastName': _lastNameController.text.trim(),
           'phone': _phoneController.text.trim(),
           'email': _emailController.text.trim(),
+          'emergencyContact': _emergencyContactController.text.trim(),
           'createdAt': FieldValue.serverTimestamp(),
         });
 
@@ -109,6 +112,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 icon: Icons.lock,
                 obscureText: true,
               ),
+              const SizedBox(height: 16),
+              _buildTextField(
+                controller: _emergencyContactController,
+                label: 'Contacto de Emergencia',
+                icon: Icons.contact_phone,
+                keyboardType: TextInputType.phone,
+              ),
               const SizedBox(height: 24),
               ElevatedButton(
                 onPressed: _registerUser,
@@ -162,6 +172,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _phoneController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _emergencyContactController.dispose();
     super.dispose();
   }
 }

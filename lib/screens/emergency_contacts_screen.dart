@@ -8,16 +8,14 @@ class EmergencyContactsScreen extends StatefulWidget {
   const EmergencyContactsScreen({super.key});
 
   @override
-  State<EmergencyContactsScreen> createState() => _EmergencyContactsScreenState();
+  State<EmergencyContactsScreen> createState() =>
+      _EmergencyContactsScreenState();
 }
 
 class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
-  List<Map<String, String>> contacts = [
-    {'name': 'Contacto 1', 'number': 'No configurado'},
-    {'name': 'Contacto 2', 'number': 'No configurado'},
-  ];
+  List<Map<String, String>> contacts = [];
 
   @override
   void initState() {
@@ -29,28 +27,25 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       try {
-        final doc = await FirebaseFirestore.instance
-            .collection('info_usuario')
-            .doc(user.uid)
-            .get();
-        
+        final doc =
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .get();
+
         if (doc.exists) {
           final data = doc.data()!;
           setState(() {
-            // Cargar contacto 1
-            if (data['EmergencyContact1Name'] != null && data['EmergencyContact1Phone'] != null) {
-              contacts[0] = {
-                'name': data['EmergencyContact1Name'],
-                'number': data['EmergencyContact1Phone'],
-              };
+            contacts.clear(); // Clear existing contacts
+
+            // Fetch mandatory emergency contact
+            if (data.containsKey('emergencyContact')) {
+              contacts.add({
+                'name': 'Contacto de Emergencia',
+                'number': data['emergencyContact'],
+              });
             }
-            // Cargar contacto 2
-            if (data['EmergencyContact2Name'] != null && data['EmergencyContact2Phone'] != null) {
-              contacts[1] = {
-                'name': data['EmergencyContact2Name'],
-                'number': data['EmergencyContact2Phone'],
-              };
-            }
+
             _isLoading = false;
           });
         } else {
@@ -89,20 +84,42 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
       return;
     }
 
+    // Validar que al menos un contacto de emergencia esté configurado
+    if (contacts.every((contact) => contact['number'] == 'No configurado')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Debe agregar al menos un contacto de emergencia'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isSaving = true;
     });
 
     try {
+      // Update the logic to save additional contacts in the 'info_usuario' collection
       await FirebaseFirestore.instance
           .collection('info_usuario')
           .doc(user.uid)
           .set({
-        'EmergencyContact1Name': contacts[0]['name'],
-        'EmergencyContact1Phone': contacts[0]['number'],
-        'EmergencyContact2Name': contacts[1]['name'],
-        'EmergencyContact2Phone': contacts[1]['number'],
-      }, SetOptions(merge: true));
+            'EmergencyContact1Name': contacts[0]['name'],
+            'EmergencyContact1Phone': contacts[0]['number'],
+            ...contacts
+                .asMap()
+                .entries
+                .skip(1)
+                .map((entry) {
+                  final idx = entry.key + 1;
+                  return {
+                    'EmergencyContact${idx}Name': entry.value['name'],
+                    'EmergencyContact${idx}Phone': entry.value['number'],
+                  };
+                })
+                .reduce((a, b) => a..addAll(b)),
+          }, SetOptions(merge: true));
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -110,7 +127,6 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
           backgroundColor: Colors.green,
         ),
       );
-
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -134,7 +150,9 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
     }
 
     // Obtener contactos
-    final contactsList = await FlutterContacts.getContacts(withProperties: true);
+    final contactsList = await FlutterContacts.getContacts(
+      withProperties: true,
+    );
 
     // Mostrar un selector simple
     showModalBottomSheet(
@@ -146,7 +164,9 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
             final c = contactsList[i];
             return ListTile(
               title: Text(c.displayName),
-              subtitle: Text(c.phones.isNotEmpty ? c.phones.first.number : 'Sin número'),
+              subtitle: Text(
+                c.phones.isNotEmpty ? c.phones.first.number : 'Sin número',
+              ),
               onTap: () {
                 if (c.phones.isNotEmpty) {
                   setState(() {
@@ -172,10 +192,7 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
         appBar: AppBar(
           title: const Text(
             'Contactos de Emergencia',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
           backgroundColor: const Color(0xFFF5A623),
           iconTheme: const IconThemeData(color: Colors.white),
@@ -188,10 +205,7 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
       appBar: AppBar(
         title: const Text(
           'Contactos de Emergencia',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         backgroundColor: const Color(0xFFF5A623),
         iconTheme: const IconThemeData(color: Colors.white),
@@ -241,7 +255,11 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
                               final contact = entry.value;
                               return Column(
                                 children: [
-                                  _buildContactItem(contact['name']!, contact['number']!, idx),
+                                  _buildContactItem(
+                                    contact['name']!,
+                                    contact['number']!,
+                                    idx,
+                                  ),
                                   const Divider(),
                                 ],
                               );
@@ -250,31 +268,78 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
                         ),
                       ),
                       const SizedBox(height: 20),
-                      // Botón para guardar contactos
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: _isSaving ? null : _saveContactsToFirebase,
-                          icon: _isSaving 
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
+                      // Botones para guardar contactos y agregar nuevo contacto
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 8.0),
+                              child: ElevatedButton.icon(
+                                onPressed:
+                                    _isSaving ? null : _saveContactsToFirebase,
+                                icon:
+                                    _isSaving
+                                        ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                        : const Icon(Icons.save),
+                                label: Text(
+                                  _isSaving
+                                      ? 'Guardando...'
+                                      : 'Guardar Contactos',
                                 ),
-                              )
-                            : const Icon(Icons.save),
-                          label: Text(_isSaving ? 'Guardando...' : 'Guardar Contactos'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFA03E99),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFA03E99),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 15,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 8.0),
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    contacts.add({
+                                      'name': 'Nuevo Contacto',
+                                      'number': 'No configurado',
+                                    });
+                                  });
+                                },
+                                icon: const Icon(
+                                  Icons.add,
+                                  color: Colors.white,
+                                ),
+                                label: const Text(
+                                  'Agregar Contacto',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFA03E99),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 15,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 10),
                       // Información adicional
@@ -287,7 +352,11 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.info, color: Colors.orange.shade600, size: 20),
+                            Icon(
+                              Icons.info,
+                              color: Colors.orange.shade600,
+                              size: 20,
+                            ),
                             const SizedBox(width: 8),
                             const Expanded(
                               child: Text(
@@ -312,10 +381,7 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
   Widget _buildAdminContact() {
     return ListTile(
       leading: const Icon(Icons.admin_panel_settings, color: Color(0xFFA03E99)),
-      title: const Text(
-        'Admin',
-        style: TextStyle(fontWeight: FontWeight.bold),
-      ),
+      title: const Text('Admin', style: TextStyle(fontWeight: FontWeight.bold)),
       subtitle: const Text('admin@emergencia.com'),
       trailing: const Icon(Icons.lock, color: Colors.grey),
     );
@@ -324,12 +390,7 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
   Widget _buildContactItem(String name, String number, int index) {
     return ListTile(
       leading: const Icon(Icons.contact_phone, color: Color(0xFFA03E99)),
-      title: Text(
-        name,
-        style: const TextStyle(
-          fontWeight: FontWeight.bold,
-        ),
-      ),
+      title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
       subtitle: Text(number),
       trailing: IconButton(
         icon: const Icon(Icons.edit, color: Color(0xFFF5A623)),
