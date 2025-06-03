@@ -17,6 +17,9 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
+  // Initialize background decibel service
+  await BackgroundDecibelService.initializeService();
+
   ShakeDetectorService().init(
     onShakeDetected: () {
       rootScaffoldMessengerKey.currentState?.showSnackBar(
