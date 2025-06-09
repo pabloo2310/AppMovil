@@ -4,6 +4,7 @@ import 'package:app_bullying/widgets/button.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:app_bullying/services/audit_logger.dart';
 
 class LocationScreen extends StatefulWidget {
   const LocationScreen({super.key});
@@ -30,15 +31,17 @@ class _LocationScreenState extends State<LocationScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       try {
-        final doc = await FirebaseFirestore.instance
-            .collection('info_usuario')
-            .doc(user.uid)
-            .get();
-        
+        final doc =
+            await FirebaseFirestore.instance
+                .collection('info_usuario')
+                .doc(user.uid)
+                .get();
+
         if (doc.exists) {
           final data = doc.data()!;
           setState(() {
-            _lastSavedLocation = 'Lat: ${data['latitude']}, Lng: ${data['longitude']}';
+            _lastSavedLocation =
+                'Lat: ${data['latitude']}, Lng: ${data['longitude']}';
             _lastSavedTime = (data['timestamp'] as Timestamp?)?.toDate();
           });
         }
@@ -94,12 +97,12 @@ class _LocationScreenState extends State<LocationScreen> {
       setState(() {
         _latitude = position.latitude;
         _longitude = position.longitude;
-        _locationText = 'Latitud: ${position.latitude.toStringAsFixed(6)}\n'
-                       'Longitud: ${position.longitude.toStringAsFixed(6)}\n'
-                       'Precisión: ${position.accuracy.toStringAsFixed(2)}m';
+        _locationText =
+            'Latitud: ${position.latitude.toStringAsFixed(6)}\n'
+            'Longitud: ${position.longitude.toStringAsFixed(6)}\n'
+            'Precisión: ${position.accuracy.toStringAsFixed(2)}m';
         _isLoading = false;
       });
-
     } catch (e) {
       setState(() {
         _locationText = 'Error al obtener ubicación: $e';
@@ -135,16 +138,21 @@ class _LocationScreenState extends State<LocationScreen> {
           .collection('info_usuario')
           .doc(user.uid)
           .set({
-        'Ubilatitude': _latitude,
-        'Ubilongitude': _longitude,
-        'Ubitimestamp': FieldValue.serverTimestamp(),
-        'Ubiaccuracy': 'high',
-      }, SetOptions(merge: true));
+            'Ubilatitude': _latitude,
+            'Ubilongitude': _longitude,
+            'Ubitimestamp': FieldValue.serverTimestamp(),
+            'Ubiaccuracy': 'high',
+          }, SetOptions(merge: true));
 
       setState(() {
         _lastSavedLocation = 'Lat: $_latitude, Lng: $_longitude';
         _lastSavedTime = DateTime.now();
       });
+
+      // Logging the saved location
+      AuditLogger.log(
+        'Ubicación guardada: Latitud $_latitude, Longitud $_longitude',
+      );
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -152,7 +160,6 @@ class _LocationScreenState extends State<LocationScreen> {
           backgroundColor: Colors.green,
         ),
       );
-
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -166,8 +173,8 @@ class _LocationScreenState extends State<LocationScreen> {
   String _formatDateTime(DateTime? dateTime) {
     if (dateTime == null) return 'No disponible';
     return '${dateTime.day}/${dateTime.month}/${dateTime.year} '
-           '${dateTime.hour.toString().padLeft(2, '0')}:'
-           '${dateTime.minute.toString().padLeft(2, '0')}';
+        '${dateTime.hour.toString().padLeft(2, '0')}:'
+        '${dateTime.minute.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -210,7 +217,7 @@ class _LocationScreenState extends State<LocationScreen> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 20),
-                      
+
                       // Información de ubicación actual
                       Container(
                         width: double.infinity,
@@ -227,7 +234,10 @@ class _LocationScreenState extends State<LocationScreen> {
                               children: [
                                 Icon(
                                   Icons.location_on,
-                                  color: _latitude != null ? Colors.green : Colors.grey,
+                                  color:
+                                      _latitude != null
+                                          ? Colors.green
+                                          : Colors.grey,
                                 ),
                                 const SizedBox(width: 8),
                                 const Text(
@@ -247,9 +257,9 @@ class _LocationScreenState extends State<LocationScreen> {
                           ],
                         ),
                       ),
-                      
+
                       const SizedBox(height: 20),
-                      
+
                       // Botones de acción
                       Row(
                         children: [
@@ -257,7 +267,10 @@ class _LocationScreenState extends State<LocationScreen> {
                             child: CustomButton(
                               text: 'Obtener Ubicación',
                               icon: _isLoading ? null : Icons.my_location,
-                              onPressed: _isLoading ? () {} : () => _getCurrentLocation(),
+                              onPressed:
+                                  _isLoading
+                                      ? () {}
+                                      : () => _getCurrentLocation(),
                               color: const Color(0xFFF5A623),
                             ),
                           ),
@@ -271,7 +284,7 @@ class _LocationScreenState extends State<LocationScreen> {
                           ),
                         ],
                       ),
-                      
+
                       if (_isLoading)
                         const Padding(
                           padding: EdgeInsets.only(top: 20),
@@ -279,9 +292,9 @@ class _LocationScreenState extends State<LocationScreen> {
                             color: Color(0xFFA03E99),
                           ),
                         ),
-                      
+
                       const SizedBox(height: 30),
-                      
+
                       // Información de ubicación guardada
                       if (_lastSavedLocation != null) ...[
                         const Divider(),
@@ -299,7 +312,10 @@ class _LocationScreenState extends State<LocationScreen> {
                             children: [
                               Row(
                                 children: [
-                                  Icon(Icons.bookmark, color: Colors.blue.shade600),
+                                  Icon(
+                                    Icons.bookmark,
+                                    color: Colors.blue.shade600,
+                                  ),
                                   const SizedBox(width: 8),
                                   const Text(
                                     'Última Ubicación Guardada:',
@@ -328,9 +344,9 @@ class _LocationScreenState extends State<LocationScreen> {
                           ),
                         ),
                       ],
-                      
+
                       const Spacer(),
-                      
+
                       // Información adicional
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -341,7 +357,11 @@ class _LocationScreenState extends State<LocationScreen> {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.info, color: Colors.orange.shade600, size: 20),
+                            Icon(
+                              Icons.info,
+                              color: Colors.orange.shade600,
+                              size: 20,
+                            ),
                             const SizedBox(width: 8),
                             const Expanded(
                               child: Text(

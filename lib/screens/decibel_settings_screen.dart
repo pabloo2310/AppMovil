@@ -15,7 +15,7 @@ class DecibelSettingsScreen extends StatefulWidget {
 
 class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
   final DecibelDetectorService _decibelService = DecibelDetectorService();
-  
+
   double _threshold = 80.0;
   bool _isEnabled = true;
   bool _notificationsEnabled = true;
@@ -51,14 +51,16 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('🚨 Nivel de ruido alto detectado: ${_currentDecibel.toStringAsFixed(1)} dB'),
+              content: Text(
+                '🚨 Nivel de ruido alto detectado: ${_currentDecibel.toStringAsFixed(1)} dB',
+              ),
               backgroundColor: Colors.red,
             ),
           );
         }
       },
     );
-    
+
     await _loadSettings();
   }
 
@@ -66,11 +68,12 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       try {
-        final doc = await FirebaseFirestore.instance
-            .collection('info_usuario')
-            .doc(user.uid)
-            .get();
-        
+        final doc =
+            await FirebaseFirestore.instance
+                .collection('info_usuario')
+                .doc(user.uid)
+                .get();
+
         if (doc.exists) {
           final data = doc.data()!;
           setState(() {
@@ -109,18 +112,20 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
             .collection('info_usuario')
             .doc(user.uid)
             .set({
-          'DecibelThreshold': _threshold,
-          'DecibelEnabled': _isEnabled,
-          'DecibelNotifications': _notificationsEnabled,
-          'DecibelTimestamp': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+              'DecibelThreshold': _threshold,
+              'DecibelEnabled': _isEnabled,
+              'DecibelNotifications': _notificationsEnabled,
+              'DecibelTimestamp': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
 
         _decibelService.setThreshold(_threshold);
         _decibelService.setNotificationsEnabled(_notificationsEnabled);
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('🔊 Configuración de decibelios guardada exitosamente'),
+            content: Text(
+              '🔊 Configuración de decibelios guardada exitosamente',
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -209,9 +214,7 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
@@ -261,18 +264,25 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
                           height: 150,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: _getDecibelColor(_currentDecibel).withOpacity(0.1),
+                            color: _getDecibelColor(
+                              _currentDecibel,
+                            ).withOpacity(0.1),
                             border: Border.all(
                               color: _getDecibelColor(_currentDecibel),
                               width: 3,
                             ),
-                            boxShadow: _isRecording ? [
-                              BoxShadow(
-                                color: _getDecibelColor(_currentDecibel).withOpacity(0.3),
-                                blurRadius: 15,
-                                spreadRadius: 3,
-                              ),
-                            ] : [],
+                            boxShadow:
+                                _isRecording
+                                    ? [
+                                      BoxShadow(
+                                        color: _getDecibelColor(
+                                          _currentDecibel,
+                                        ).withOpacity(0.3),
+                                        blurRadius: 15,
+                                        spreadRadius: 3,
+                                      ),
+                                    ]
+                                    : [],
                           ),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -284,7 +294,9 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
                                   fontWeight: FontWeight.bold,
                                   color: _getDecibelColor(_currentDecibel),
                                 ),
-                                child: Text('${_currentDecibel.toStringAsFixed(1)}'),
+                                child: Text(
+                                  '${_currentDecibel.toStringAsFixed(1)}',
+                                ),
                               ),
                               Text(
                                 'dB',
@@ -319,10 +331,16 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: _backgroundMonitoring ? Colors.green.shade50 : Colors.grey.shade100,
+                            color:
+                                _backgroundMonitoring
+                                    ? Colors.green.shade50
+                                    : Colors.grey.shade100,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: _backgroundMonitoring ? Colors.green.shade300 : Colors.grey.shade300,
+                              color:
+                                  _backgroundMonitoring
+                                      ? Colors.green.shade300
+                                      : Colors.grey.shade300,
                             ),
                           ),
                           child: Column(
@@ -330,14 +348,20 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
                               Row(
                                 children: [
                                   Icon(
-                                    _backgroundMonitoring ? Icons.autorenew : Icons.pause_circle_outline,
-                                    color: _backgroundMonitoring ? Colors.green.shade700 : Colors.grey.shade600,
+                                    _backgroundMonitoring
+                                        ? Icons.autorenew
+                                        : Icons.pause_circle_outline,
+                                    color:
+                                        _backgroundMonitoring
+                                            ? Colors.green.shade700
+                                            : Colors.grey.shade600,
                                     size: 24,
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         const Text(
                                           'Monitoreo en Segundo Plano',
@@ -347,10 +371,15 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
                                           ),
                                         ),
                                         Text(
-                                          _backgroundMonitoring ? 'Activo - Monitoreando continuamente' : 'Inactivo',
+                                          _backgroundMonitoring
+                                              ? 'Activo - Monitoreando continuamente'
+                                              : 'Inactivo',
                                           style: TextStyle(
                                             fontSize: 12,
-                                            color: _backgroundMonitoring ? Colors.green.shade600 : Colors.grey.shade600,
+                                            color:
+                                                _backgroundMonitoring
+                                                    ? Colors.green.shade600
+                                                    : Colors.grey.shade600,
                                           ),
                                         ),
                                       ],
@@ -359,7 +388,9 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
                                   Switch(
                                     value: _backgroundMonitoring,
                                     activeColor: const Color(0xFFA03E99),
-                                    onChanged: (value) => _toggleBackgroundMonitoring(),
+                                    onChanged:
+                                        (value) =>
+                                            _toggleBackgroundMonitoring(),
                                   ),
                                 ],
                               ),
@@ -367,7 +398,11 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
                                 const SizedBox(height: 8),
                                 Row(
                                   children: [
-                                    Icon(Icons.battery_alert, size: 16, color: Colors.orange.shade700),
+                                    Icon(
+                                      Icons.battery_alert,
+                                      size: 16,
+                                      color: Colors.orange.shade700,
+                                    ),
                                     const SizedBox(width: 4),
                                     Text(
                                       'Consumo de batería activo',
@@ -407,7 +442,9 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
                             'Notificaciones habilitadas',
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
-                          subtitle: const Text('Recibir alertas cuando el ruido sea alto'),
+                          subtitle: const Text(
+                            'Recibir alertas cuando el ruido sea alto',
+                          ),
                           value: _notificationsEnabled,
                           activeColor: const Color(0xFFA03E99),
                           onChanged: (value) {
@@ -442,13 +479,14 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
                           divisions: 8,
                           activeColor: const Color(0xFFA03E99),
                           inactiveColor: Colors.grey.shade300,
-                          onChanged: _isEnabled
-                              ? (value) {
-                                  setState(() {
-                                    _threshold = value;
-                                  });
-                                }
-                              : null,
+                          onChanged:
+                              _isEnabled
+                                  ? (value) {
+                                    setState(() {
+                                      _threshold = value;
+                                    });
+                                  }
+                                  : null,
                         ),
 
                         const SizedBox(height: 20),
@@ -528,9 +566,14 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
                                 child: ElevatedButton(
                                   onPressed: _toggleRecording,
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: _isRecording ? Colors.red : Colors.green,
+                                    backgroundColor:
+                                        _isRecording
+                                            ? Colors.red
+                                            : Colors.green,
                                     foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(vertical: 15),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 15,
+                                    ),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(10),
                                     ),
@@ -538,9 +581,15 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      Icon(_isRecording ? Icons.stop : Icons.mic),
+                                      Icon(
+                                        _isRecording ? Icons.stop : Icons.mic,
+                                      ),
                                       const SizedBox(width: 8),
-                                      Text(_isRecording ? 'Detener' : 'Iniciar Detección'),
+                                      Text(
+                                        _isRecording
+                                            ? 'Detener'
+                                            : 'Iniciar Detección',
+                                      ),
                                     ],
                                   ),
                                 ),

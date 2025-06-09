@@ -3,6 +3,7 @@ import 'package:app_bullying/widgets/card_container.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:app_bullying/services/audit_logger.dart';
 
 class EmergencyContactsScreen extends StatefulWidget {
   const EmergencyContactsScreen({super.key});
@@ -127,6 +128,7 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
           backgroundColor: Colors.green,
         ),
       );
+      AuditLogger.log('Contactos de emergencia guardados exitosamente');
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

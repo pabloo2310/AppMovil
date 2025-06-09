@@ -3,15 +3,17 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:app_bullying/services/audio_recorder_service.dart';
+import 'package:app_bullying/services/audit_logger.dart';
 
 class EmergencyProtocolService {
-  static final EmergencyProtocolService _instance = EmergencyProtocolService._internal();
+  static final EmergencyProtocolService _instance =
+      EmergencyProtocolService._internal();
   factory EmergencyProtocolService() => _instance;
   EmergencyProtocolService._internal();
 
   final AudioRecorderService _audioRecorder = AudioRecorderService();
   bool _isProtocolActive = false;
-  
+
   // Variables para almacenar datos durante el protocolo
   Map<String, dynamic>? _protocolData;
   DateTime? _protocolStartTime;
@@ -22,8 +24,10 @@ class EmergencyProtocolService {
   bool get isProtocolActive => _isProtocolActive;
 
   Future<Map<String, dynamic>> startEmergencyProtocol() async {
-    print('EmergencyProtocolService: startEmergencyProtocol called, current state: $_isProtocolActive');
-    
+    print(
+      'EmergencyProtocolService: startEmergencyProtocol called, current state: $_isProtocolActive',
+    );
+
     if (_isProtocolActive) {
       throw Exception('El protocolo de emergencia ya está activo');
     }
@@ -31,9 +35,11 @@ class EmergencyProtocolService {
     _isProtocolActive = true;
     _protocolStartTime = DateTime.now();
     _currentRecordingDuration = 0;
-    
-    print('EmergencyProtocolService: Protocol started, state set to: $_isProtocolActive');
-    
+
+    print(
+      'EmergencyProtocolService: Protocol started, state set to: $_isProtocolActive',
+    );
+
     try {
       // 1. Obtener usuario actual
       final user = FirebaseAuth.instance.currentUser;
@@ -43,24 +49,24 @@ class EmergencyProtocolService {
 
       // 2. Obtener configuración de audio actualizada (en paralelo)
       final userConfigFuture = _getUserConfiguration(user.uid);
-      
+
       // 3. Obtener ubicación (en paralelo)
       final locationFuture = _getCurrentLocation();
-      
+
       // 4. Inicializar grabador (en paralelo)
       final audioInitFuture = _audioRecorder.init();
-      
+
       // Ejecutar todo en paralelo para mayor velocidad
       final results = await Future.wait([
         userConfigFuture,
         locationFuture,
         audioInitFuture,
       ]);
-      
+
       final userConfig = results[0] as Map<String, dynamic>;
       final location = results[1] as Map<String, double>;
       _maxRecordingDuration = userConfig['audioDuration'];
-      
+
       // 5. Preparar datos para enviar DESPUÉS de la grabación
       _protocolData = {
         'audio': 'no implementado aun',
@@ -71,16 +77,17 @@ class EmergencyProtocolService {
         'nombre': userConfig['userName'],
         'userId': user.uid, // Agregar UID del usuario
       };
-      
+
       // 6. Iniciar grabación inmediatamente
       await _startRecordingWithTimer(userConfig['audioDuration']);
-      
+
+      AuditLogger.log('Protocolo de emergencia iniciado');
+
       return {
         'success': true,
         'message': 'Protocolo de emergencia iniciado',
         'audioDuration': userConfig['audioDuration'],
       };
-      
     } catch (e) {
       print('EmergencyProtocolService: Error in startEmergencyProtocol: $e');
       _isProtocolActive = false;
@@ -92,42 +99,42 @@ class EmergencyProtocolService {
   }
 
   Future<Map<String, dynamic>> stopEmergencyProtocol() async {
-    print('EmergencyProtocolService: stopEmergencyProtocol called, current state: $_isProtocolActive');
-    
+    print(
+      'EmergencyProtocolService: stopEmergencyProtocol called, current state: $_isProtocolActive',
+    );
+
     if (!_isProtocolActive) {
       print('EmergencyProtocolService: Protocol not active, returning false');
-      return {
-        'success': false,
-        'message': 'El protocolo no está activo',
-      };
+      return {'success': false, 'message': 'El protocolo no está activo'};
     }
 
     try {
       // 1. Detener timer y grabación
       _stopTimer();
       final recordingPath = await _audioRecorder.stopRecording();
-      
+
       // 2. AHORA sí enviar todos los datos a Firebase
       if (_protocolData != null) {
         await _saveEmergencyData(_protocolData!);
       }
-      
+
       // 3. Limpiar estado DESPUÉS de enviar datos
       _isProtocolActive = false;
       final protocolData = _protocolData;
       _protocolData = null;
       _protocolStartTime = null;
       _currentRecordingDuration = 0;
-      
-      print('EmergencyProtocolService: Protocol stopped successfully, state set to: $_isProtocolActive');
-      
+
+      print(
+        'EmergencyProtocolService: Protocol stopped successfully, state set to: $_isProtocolActive',
+      );
+
       return {
         'success': true,
         'message': 'Protocolo completado y datos enviados a Firebase',
         'recordingPath': recordingPath,
         'data': protocolData,
       };
-      
     } catch (e) {
       print('EmergencyProtocolService: Error in stopEmergencyProtocol: $e');
       _isProtocolActive = false;
@@ -140,33 +147,30 @@ class EmergencyProtocolService {
   }
 
   Future<Map<String, dynamic>> cancelEmergencyProtocol() async {
-    print('EmergencyProtocolService: cancelEmergencyProtocol called, current state: $_isProtocolActive');
-    
+    print(
+      'EmergencyProtocolService: cancelEmergencyProtocol called, current state: $_isProtocolActive',
+    );
+
     if (!_isProtocolActive) {
-      return {
-        'success': false,
-        'message': 'El protocolo no está activo',
-      };
+      return {'success': false, 'message': 'El protocolo no está activo'};
     }
 
     try {
       // 1. Detener timer y grabación sin enviar datos
       _stopTimer();
       await _audioRecorder.stopRecording();
-      
+
       // 2. Limpiar estado sin enviar a Firebase
       _isProtocolActive = false;
       _protocolData = null;
       _protocolStartTime = null;
       _currentRecordingDuration = 0;
-      
-      print('EmergencyProtocolService: Protocol cancelled, state set to: $_isProtocolActive');
-      
-      return {
-        'success': true,
-        'message': 'Protocolo de emergencia cancelado',
-      };
-      
+
+      print(
+        'EmergencyProtocolService: Protocol cancelled, state set to: $_isProtocolActive',
+      );
+
+      return {'success': true, 'message': 'Protocolo de emergencia cancelado'};
     } catch (e) {
       print('EmergencyProtocolService: Error in cancelEmergencyProtocol: $e');
       _isProtocolActive = false;
@@ -184,16 +188,17 @@ class EmergencyProtocolService {
     if (user == null) return 30;
 
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('info_usuario')
-          .doc(user.uid)
-          .get();
+      final doc =
+          await FirebaseFirestore.instance
+              .collection('info_usuario')
+              .doc(user.uid)
+              .get();
 
       if (doc.exists) {
         final data = doc.data()!;
-        return (data['AudioDuracion'] as num?)?.toInt() ?? 
-               (data['recordingDuration'] as num?)?.toInt() ?? 
-               30;
+        return (data['AudioDuracion'] as num?)?.toInt() ??
+            (data['recordingDuration'] as num?)?.toInt() ??
+            30;
       }
       return 30;
     } catch (e) {
@@ -204,24 +209,25 @@ class EmergencyProtocolService {
   Future<void> _startRecordingWithTimer(int duration) async {
     try {
       await _audioRecorder.startRecording(duration: duration);
-      
+
       // Iniciar timer personalizado para controlar la duración
       _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         _currentRecordingDuration++;
-        
+
         // Si se alcanza la duración máxima, detener automáticamente
         if (_currentRecordingDuration >= duration) {
           _autoStopRecording();
         }
       });
-      
     } catch (e) {
       throw Exception('Error al iniciar grabación: $e');
     }
   }
 
   Future<void> _autoStopRecording() async {
-    print('EmergencyProtocolService: _autoStopRecording called, protocol active: $_isProtocolActive');
+    print(
+      'EmergencyProtocolService: _autoStopRecording called, protocol active: $_isProtocolActive',
+    );
     if (_isProtocolActive) {
       try {
         // Detener automáticamente el protocolo cuando termine la grabación
@@ -239,10 +245,11 @@ class EmergencyProtocolService {
 
   Future<Map<String, dynamic>> _getUserConfiguration(String userId) async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('info_usuario')
-          .doc(userId)
-          .get();
+      final doc =
+          await FirebaseFirestore.instance
+              .collection('info_usuario')
+              .doc(userId)
+              .get();
 
       int audioDuration = 30; // Duración predeterminada
       String phoneNumber = 'no registrado';
@@ -250,25 +257,28 @@ class EmergencyProtocolService {
 
       if (doc.exists) {
         final data = doc.data()!;
-        
+
         // Obtener duración de audio (puede estar en diferentes campos)
-        audioDuration = (data['AudioDuracion'] as num?)?.toInt() ?? 
-                       (data['recordingDuration'] as num?)?.toInt() ?? 
-                       30;
-        
+        audioDuration =
+            (data['AudioDuracion'] as num?)?.toInt() ??
+            (data['recordingDuration'] as num?)?.toInt() ??
+            30;
+
         // Obtener número de teléfono
-        phoneNumber = data['phoneNumber'] ?? 
-                     data['telefono'] ?? 
-                     data['phone'] ?? 
-                     'no registrado';
-        
+        phoneNumber =
+            data['phoneNumber'] ??
+            data['telefono'] ??
+            data['phone'] ??
+            'no registrado';
+
         // Obtener nombre del usuario
-        userName = data['displayName'] ?? 
-                  data['nombre'] ?? 
-                  data['name'] ?? 
-                  FirebaseAuth.instance.currentUser?.displayName ?? 
-                  FirebaseAuth.instance.currentUser?.email ?? 
-                  'Usuario';
+        userName =
+            data['displayName'] ??
+            data['nombre'] ??
+            data['name'] ??
+            FirebaseAuth.instance.currentUser?.displayName ??
+            FirebaseAuth.instance.currentUser?.email ??
+            'Usuario';
       }
 
       return {
@@ -312,10 +322,7 @@ class EmergencyProtocolService {
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      return {
-        'latitude': position.latitude,
-        'longitude': position.longitude,
-      };
+      return {'latitude': position.latitude, 'longitude': position.longitude};
     } catch (e) {
       throw Exception('Error al obtener ubicación: $e');
     }
@@ -326,7 +333,7 @@ class EmergencyProtocolService {
       await FirebaseFirestore.instance
           .collection('simulacion_mensaje')
           .add(data);
-      
+
       print('Datos de emergencia guardados exitosamente en Firebase');
     } catch (e) {
       throw Exception('Error al guardar datos de emergencia: $e');
