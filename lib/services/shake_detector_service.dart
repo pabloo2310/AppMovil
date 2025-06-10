@@ -4,6 +4,7 @@ import 'package:sensors_plus/sensors_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:app_bullying/services/emergency_protocol_service.dart';
 
 class ShakeDetectorService {
   static final ShakeDetectorService _instance = ShakeDetectorService._internal();
@@ -25,6 +26,9 @@ class ShakeDetectorService {
 
   // Callback para cuando se detecta una sacudida
   VoidCallback? _onShakeDetected;
+
+  // Referencia al servicio de emergencia
+  final EmergencyProtocolService _emergencyService = EmergencyProtocolService();
 
   bool get isEnabled => _isEnabled;
   bool get isListening => _isListening;
@@ -127,7 +131,7 @@ class ShakeDetectorService {
     }
   }
 
-  void _handleShakeDetected() {
+  void _handleShakeDetected() async {
     final now = DateTime.now();
     
     // Evitar múltiples detecciones muy seguidas
@@ -137,10 +141,23 @@ class ShakeDetectorService {
     }
     
     _lastShakeTime = now;
-    print('¡Sacudida detectada!');
+    print('¡Sacudida detectada! Activando protocolo de emergencia...');
     
-    // Ejecutar callback
+    // Ejecutar callback original si existe
     _onShakeDetected?.call();
+
+    // NUEVO: Activar protocolo de emergencia automáticamente
+    try {
+      // Verificar que no haya un protocolo ya activo
+      if (!_emergencyService.isProtocolActive) {
+        await _emergencyService.startEmergencyProtocol(fromShake: true);
+        print('Protocolo de emergencia activado exitosamente por sacudida');
+      } else {
+        print('Protocolo de emergencia ya está activo, ignorando sacudida');
+      }
+    } catch (e) {
+      print('Error al activar protocolo de emergencia por sacudida: $e');
+    }
   }
 
   void setEnabled(bool enabled) {

@@ -53,6 +53,14 @@ class MyApp extends StatelessWidget {
       routes: AppRoutes.routes,
       onGenerateRoute: AppRoutes.onGenerateRoute,
       theme: MyTheme.myTheme,
+      builder: (context, child) {
+        // Registrar el contexto global para el servicio de emergencia
+        // Usar el contexto del navigatorKey que siempre está disponible
+        if (navigatorKey.currentContext != null) {
+          EmergencyProtocolService().setGlobalContext(navigatorKey.currentContext);
+        }
+        return child!;
+      },
     );
   }
 }
