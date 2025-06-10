@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:app_bullying/services/audio_recorder_service.dart';
 import 'package:app_bullying/services/audit_logger.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 
 class EmergencyProtocolService {
   static final EmergencyProtocolService _instance =
@@ -52,11 +53,16 @@ class EmergencyProtocolService {
 
   // Método para registrar el contexto global
   void setGlobalContext(BuildContext? context) {
-    print('EmergencyProtocolService: Setting global context: ${context != null}');
+    print(
+      'EmergencyProtocolService: Setting global context: ${context != null}',
+    );
     _globalContext = context;
   }
 
-  Future<Map<String, dynamic>> startEmergencyProtocol({bool fromShake = false, bool fromDecibel = false}) async {
+  Future<Map<String, dynamic>> startEmergencyProtocol({
+    bool fromShake = false,
+    bool fromDecibel = false,
+  }) async {
     print(
       'EmergencyProtocolService: startEmergencyProtocol called, current state: $_isProtocolActive, fromShake: $fromShake, fromDecibel: $fromDecibel',
     );
@@ -141,7 +147,7 @@ class EmergencyProtocolService {
         try {
           String message;
           Color backgroundColor;
-          
+
           if (fromShake) {
             message = '🚨 Protocolo activado por sacudida detectada';
             backgroundColor = Colors.deepOrange;
@@ -152,7 +158,7 @@ class EmergencyProtocolService {
             message = '🚨 Protocolo de emergencia iniciado';
             backgroundColor = Colors.orange;
           }
-          
+
           ScaffoldMessenger.of(_globalContext!).showSnackBar(
             SnackBar(
               content: Text(message),
@@ -173,16 +179,33 @@ class EmergencyProtocolService {
       } else {
         logMessage = "manualmente";
       }
-      
+
       AuditLogger.log('Protocolo de emergencia iniciado $logMessage');
+
+      // Obtener números de contacto desde la configuración del usuario
+      final List<String> emergencyContacts = List<String>.from(
+        userConfig['emergencyContacts'] ?? [],
+      );
+
+      // Enviar ubicación a múltiples contactos
+      if (emergencyContacts.isNotEmpty) {
+        await sendLocationToMultipleContacts(
+          emergencyContacts,
+          location['latitude']!,
+          location['longitude']!,
+        );
+      } else {
+        print('No hay contactos de emergencia configurados.');
+      }
 
       return {
         'success': true,
-        'message': fromShake 
-            ? 'Protocolo activado por sacudida detectada'
-            : (fromDecibel 
-                ? 'Protocolo activado por nivel de ruido alto'
-                : 'Protocolo de emergencia iniciado'),
+        'message':
+            fromShake
+                ? 'Protocolo activado por sacudida detectada'
+                : (fromDecibel
+                    ? 'Protocolo activado por nivel de ruido alto'
+                    : 'Protocolo de emergencia iniciado'),
         'audioDuration': userConfig['audioDuration'],
       };
     } catch (e) {
@@ -314,31 +337,35 @@ class EmergencyProtocolService {
 
   void _showGlobalCancelOverlay() {
     if (_globalContext == null) {
-      print('EmergencyProtocolService: No global context available for overlay');
+      print(
+        'EmergencyProtocolService: No global context available for overlay',
+      );
       return;
     }
-    
+
     // Remover overlay anterior si existe
     _removeCancelOverlay();
-    
+
     try {
-      String activationSource = _protocolData?['activatedBy'] ?? 'manual_activation';
+      String activationSource =
+          _protocolData?['activatedBy'] ?? 'manual_activation';
       bool fromShake = activationSource == 'shake_detection';
       bool fromDecibel = activationSource == 'decibel_detection';
-      
+
       _cancelOverlay = OverlayEntry(
-        builder: (context) => _CancelProtocolOverlay(
-          onCancel: () async {
-            await cancelEmergencyProtocol();
-          },
-          onDismiss: _removeCancelOverlay,
-          recordingDuration: _currentRecordingDuration,
-          maxDuration: _maxRecordingDuration,
-          activatedByShake: fromShake,
-          activatedByDecibel: fromDecibel,
-        ),
+        builder:
+            (context) => _CancelProtocolOverlay(
+              onCancel: () async {
+                await cancelEmergencyProtocol();
+              },
+              onDismiss: _removeCancelOverlay,
+              recordingDuration: _currentRecordingDuration,
+              maxDuration: _maxRecordingDuration,
+              activatedByShake: fromShake,
+              activatedByDecibel: fromDecibel,
+            ),
       );
-      
+
       Overlay.of(_globalContext!).insert(_cancelOverlay!);
       print('EmergencyProtocolService: Cancel overlay inserted successfully');
     } catch (e) {
@@ -361,11 +388,11 @@ class EmergencyProtocolService {
 
   void _showProtocolCompleteDialog(String? path, Map<String, dynamic> data) {
     if (_globalContext == null) return;
-    
+
     try {
       String activationSource = data['activatedBy'] ?? 'manual_activation';
       String activationText;
-      
+
       switch (activationSource) {
         case 'shake_detection':
           activationText = 'Sacudida';
@@ -376,45 +403,48 @@ class EmergencyProtocolService {
         default:
           activationText = 'Manual';
       }
-      
+
       showDialog(
         context: _globalContext!,
-        builder: (context) => AlertDialog(
-          title: const Text('🚨 Protocolo Completado'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Protocolo ejecutado exitosamente:',
-                style: TextStyle(fontWeight: FontWeight.bold),
+        builder:
+            (context) => AlertDialog(
+              title: const Text('🚨 Protocolo Completado'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Protocolo ejecutado exitosamente:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text('✅ Grabación de audio completada'),
+                  const Text('✅ Ubicación GPS obtenida'),
+                  const Text('✅ Datos enviados a Firebase'),
+                  const Text('✅ Timestamp registrado'),
+                  const SizedBox(height: 15),
+                  Text(
+                    '📍 Ubicación: ${data['latitud']?.toStringAsFixed(6)}, ${data['longitud']?.toStringAsFixed(6)}',
+                  ),
+                  Text('👤 Usuario: ${data['nombre']}'),
+                  Text('📱 Teléfono: ${data['numero']}'),
+                  Text('🆔 ID: ${data['userId']}'),
+                  Text('🔧 Activado por: $activationText'),
+                  const SizedBox(height: 10),
+                  if (path != null)
+                    Text(
+                      'Audio: ${path.split('/').last}',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                ],
               ),
-              const SizedBox(height: 10),
-              const Text('✅ Grabación de audio completada'),
-              const Text('✅ Ubicación GPS obtenida'),
-              const Text('✅ Datos enviados a Firebase'),
-              const Text('✅ Timestamp registrado'),
-              const SizedBox(height: 15),
-              Text('📍 Ubicación: ${data['latitud']?.toStringAsFixed(6)}, ${data['longitud']?.toStringAsFixed(6)}'),
-              Text('👤 Usuario: ${data['nombre']}'),
-              Text('📱 Teléfono: ${data['numero']}'),
-              Text('🆔 ID: ${data['userId']}'),
-              Text('🔧 Activado por: $activationText'),
-              const SizedBox(height: 10),
-              if (path != null)
-                Text(
-                  'Audio: ${path.split('/').last}',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cerrar'),
                 ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cerrar'),
+              ],
             ),
-          ],
-        ),
       );
     } catch (e) {
       print('Error showing protocol complete dialog: $e');
@@ -580,6 +610,27 @@ class EmergencyProtocolService {
     }
   }
 
+  // Método para enviar ubicación a múltiples contactos
+  Future<void> sendLocationToMultipleContacts(
+    List<String> phoneNumbers,
+    double latitude,
+    double longitude,
+  ) async {
+    final String message =
+        'Estoy en peligro. Mi ubicación actual es: https://www.google.com/maps?q=$latitude,$longitude';
+
+    for (final phoneNumber in phoneNumbers) {
+      final String whatsappUrl =
+          'https://wa.me/$phoneNumber?text=${Uri.encodeComponent(message)}';
+
+      if (await canLaunchUrlString(whatsappUrl)) {
+        await launchUrlString(whatsappUrl);
+      } else {
+        print('No se pudo abrir WhatsApp para el número $phoneNumber');
+      }
+    }
+  }
+
   // Getters para el estado actual
   bool get isRecording => _audioRecorder.isRecording;
   int get recordingDuration => _currentRecordingDuration;
@@ -646,21 +697,13 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
       vsync: this,
     );
 
-    _scaleAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.elasticOut,
-    ));
+    _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
+    );
 
-    _opacityAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeIn,
-    ));
+    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
+    );
 
     _animationController.forward();
     _startCountdown();
@@ -672,11 +715,11 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
         timer.cancel();
         return;
       }
-      
+
       setState(() {
         _countdown--;
       });
-      
+
       // Solo cerrar cuando llegue exactamente a 0
       if (_countdown <= 0) {
         timer.cancel();
@@ -706,7 +749,7 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
     String title;
     IconData iconData;
     Color iconColor;
-    
+
     if (widget.activatedByShake) {
       title = '🚨 Protocolo Activado por Sacudida';
       iconData = Icons.vibration;
@@ -760,14 +803,10 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                             color: iconColor.withOpacity(0.1),
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(
-                            iconData,
-                            size: 40,
-                            color: iconColor,
-                          ),
+                          child: Icon(iconData, size: 40, color: iconColor),
                         ),
                         const SizedBox(height: 20),
-                        
+
                         Text(
                           title,
                           style: const TextStyle(
@@ -778,10 +817,13 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 12),
-                        
+
                         // Información de grabación
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.red.shade50,
                             borderRadius: BorderRadius.circular(10),
@@ -796,7 +838,7 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                           ),
                         ),
                         const SizedBox(height: 12),
-                        
+
                         Text(
                           'Se cerrará automáticamente en $_countdown segundos',
                           style: const TextStyle(
@@ -806,7 +848,7 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 20),
-                        
+
                         // Contador visual
                         Container(
                           width: 60,
@@ -827,7 +869,7 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                           ),
                         ),
                         const SizedBox(height: 24),
-                        
+
                         // Botón de cancelar
                         SizedBox(
                           width: double.infinity,
@@ -853,9 +895,9 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                             ),
                           ),
                         ),
-                        
+
                         const SizedBox(height: 12),
-                        
+
                         const Text(
                           'Si no cancelas, el protocolo continuará automáticamente',
                           style: TextStyle(
