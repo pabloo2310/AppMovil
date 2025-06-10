@@ -9,14 +9,12 @@ class AppRoutes {
     'register': (BuildContext context) => const RegisterScreen(),
     'home': (BuildContext context) => const HomeScreen(),
     'settings': (BuildContext context) => const SettingsScreen(),
-    'voice_commands': (BuildContext context) => const VoiceCommandsScreen(),
+    'voice_commands': (BuildContext context) => const VoiceCommandsScreen(title: 'Voice Commands'),
     'emergency_contacts': (BuildContext context) => const EmergencyContactsScreen(),
     'decibel_settings': (BuildContext context) => const DecibelSettingsScreen(),
     'audio_settings': (BuildContext context) => const AudioSettingsScreen(),
-    'sos_app': (BuildContext context) => const SosApp(title: 'SOS Emergencia'),
     'shake_settings': (BuildContext context) => const ShakeSettingsScreen(),
     'error': (BuildContext context) => const ErrorScreen(),
-    'location': (BuildContext context) => const LocationScreen(),
     'edit_profile': (BuildContext context) => const EditProfileScreen(),
   };
 

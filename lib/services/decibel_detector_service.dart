@@ -10,6 +10,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:app_bullying/services/emergency_protocol_service.dart';
 
 class DecibelDetectorService {
   static final DecibelDetectorService _instance = DecibelDetectorService._internal();
@@ -18,6 +19,7 @@ class DecibelDetectorService {
 
   final AudioRecorder _recorder = AudioRecorder();
   final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
+  final EmergencyProtocolService _emergencyService = EmergencyProtocolService();
   
   bool _isRecording = false;
   bool _isBackgroundMonitoring = false;
@@ -26,6 +28,7 @@ class DecibelDetectorService {
   double _notificationThreshold = 80.0;
   bool _notificationsEnabled = true;
   DateTime? _lastNotificationTime;
+  DateTime? _lastEmergencyActivationTime;
   
   StreamSubscription<Uint8List>? _audioStreamSubscription;
   Timer? _amplitudeTimer;
@@ -70,7 +73,7 @@ class DecibelDetectorService {
         if (doc.exists) {
           final data = doc.data()!;
           _notificationThreshold = (data['DecibelThreshold'] as num?)?.toDouble() ?? 80.0;
-          _notificationsEnabled = data['DecibelNotifications'] ?? true;
+          _notificationsEnabled = data['DecibelEnabled'] ?? true;
         }
       } catch (e) {
         print('Error loading decibel settings: $e');
@@ -92,7 +95,7 @@ class DecibelDetectorService {
             .doc(user.uid)
             .set({
           'DecibelThreshold': _notificationThreshold,
-          'DecibelNotifications': _notificationsEnabled,
+          'DecibelEnabled': _notificationsEnabled,
           'DecibelTimestamp': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       } catch (e) {
@@ -244,6 +247,36 @@ class DecibelDetectorService {
     if (_notificationsEnabled && _currentDecibel >= _notificationThreshold) {
       _showHighDecibelNotification(_currentDecibel);
       _onHighDecibelDetected?.call();
+      
+      // NUEVO: Activar protocolo de emergencia si el nivel es muy alto
+      _activateEmergencyProtocolIfNeeded(_currentDecibel);
+    }
+  }
+
+  // NUEVO: Método para activar el protocolo de emergencia si el nivel de ruido es muy alto
+  Future<void> _activateEmergencyProtocolIfNeeded(double decibel) async {
+    // Activar exactamente en el umbral configurado, sin añadir 10% adicional
+    if (decibel >= _notificationThreshold) {
+      // Evitar activaciones múltiples en un corto período de tiempo (60 segundos)
+      final now = DateTime.now();
+      if (_lastEmergencyActivationTime != null && 
+          now.difference(_lastEmergencyActivationTime!).inSeconds < 60) {
+        return;
+      }
+      
+      _lastEmergencyActivationTime = now;
+      
+      try {
+        // Verificar que no haya un protocolo ya activo
+        if (!_emergencyService.isProtocolActive) {
+          print('DecibelDetectorService: Activando protocolo de emergencia por nivel de ruido alto: $decibel dB');
+          
+          // Activar el protocolo con un indicador especial para decibelios
+          await _emergencyService.startEmergencyProtocol(fromDecibel: true);
+        }
+      } catch (e) {
+        print('Error al activar protocolo de emergencia por nivel de ruido alto: $e');
+      }
     }
   }
 
@@ -321,6 +354,13 @@ class DecibelDetectorService {
         'threshold': _notificationThreshold,
         'enabled': _notificationsEnabled,
       });
+    }
+    
+    // Si se activa, iniciar la grabación automáticamente
+    if (enabled && !_isRecording && !_isBackgroundMonitoring) {
+      startRecording();
+    } else if (!enabled && _isRecording && !_isBackgroundMonitoring) {
+      stopRecording();
     }
   }
 

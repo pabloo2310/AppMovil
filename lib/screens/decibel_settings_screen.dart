@@ -18,10 +18,8 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
 
   double _threshold = 80.0;
   bool _isEnabled = true;
-  bool _notificationsEnabled = true;
   bool _backgroundMonitoring = false;
   bool _isLoading = true;
-  bool _isRecording = false;
   double _currentDecibel = 0.0;
   double _maxDecibel = 0.0;
 
@@ -79,14 +77,12 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
           setState(() {
             _threshold = (data['DecibelThreshold'] as num?)?.toDouble() ?? 80.0;
             _isEnabled = data['DecibelEnabled'] ?? true;
-            _notificationsEnabled = data['DecibelNotifications'] ?? true;
             _backgroundMonitoring = _decibelService.isBackgroundMonitoring;
             _isLoading = false;
           });
         } else {
           setState(() {
             _threshold = _decibelService.notificationThreshold;
-            _notificationsEnabled = _decibelService.notificationsEnabled;
             _backgroundMonitoring = _decibelService.isBackgroundMonitoring;
             _isLoading = false;
           });
@@ -102,6 +98,11 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
         _isLoading = false;
       });
     }
+    
+    // Si está habilitado, iniciar la detección automáticamente
+    if (_isEnabled && !_decibelService.isRecording && !_backgroundMonitoring) {
+      _decibelService.startRecording();
+    }
   }
 
   Future<void> _saveSettings() async {
@@ -114,12 +115,19 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
             .set({
               'DecibelThreshold': _threshold,
               'DecibelEnabled': _isEnabled,
-              'DecibelNotifications': _notificationsEnabled,
+              'DecibelNotifications': true, // Siempre habilitado
               'DecibelTimestamp': FieldValue.serverTimestamp(),
             }, SetOptions(merge: true));
 
         _decibelService.setThreshold(_threshold);
-        _decibelService.setNotificationsEnabled(_notificationsEnabled);
+        _decibelService.setNotificationsEnabled(_isEnabled);
+        
+        // Iniciar o detener la detección según la configuración
+        if (_isEnabled && !_decibelService.isRecording && !_backgroundMonitoring) {
+          _decibelService.startRecording();
+        } else if (!_isEnabled && _decibelService.isRecording && !_backgroundMonitoring) {
+          _decibelService.stopRecording();
+        }
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -137,21 +145,6 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
           ),
         );
       }
-    }
-  }
-
-  Future<void> _toggleRecording() async {
-    if (_isRecording) {
-      await _decibelService.stopRecording();
-      setState(() {
-        _isRecording = false;
-        _currentDecibel = 0.0;
-      });
-    } else {
-      await _decibelService.startRecording();
-      setState(() {
-        _isRecording = true;
-      });
     }
   }
 
@@ -181,13 +174,6 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
         ),
       );
     }
-  }
-
-  void _resetMaxDecibel() {
-    _decibelService.resetMaxDecibel();
-    setState(() {
-      _maxDecibel = 0.0;
-    });
   }
 
   Color _getDecibelColor(double decibel) {
@@ -272,7 +258,7 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
                               width: 3,
                             ),
                             boxShadow:
-                                _isRecording
+                                _isEnabled
                                     ? [
                                       BoxShadow(
                                         color: _getDecibelColor(
@@ -426,30 +412,15 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
                             'Activar detector de decibelios',
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
+                          subtitle: const Text(
+                            'Detecta niveles altos de ruido y activa el protocolo de emergencia',
+                            style: TextStyle(fontSize: 12),
+                          ),
                           value: _isEnabled,
                           activeColor: const Color(0xFFA03E99),
                           onChanged: (value) {
                             setState(() {
                               _isEnabled = value;
-                            });
-                          },
-                        ),
-
-                        const SizedBox(height: 10),
-
-                        SwitchListTile(
-                          title: const Text(
-                            'Notificaciones habilitadas',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: const Text(
-                            'Recibir alertas cuando el ruido sea alto',
-                          ),
-                          value: _notificationsEnabled,
-                          activeColor: const Color(0xFFA03E99),
-                          onChanged: (value) {
-                            setState(() {
-                              _notificationsEnabled = value;
                             });
                           },
                         ),
@@ -491,114 +462,46 @@ class _DecibelSettingsScreenState extends State<DecibelSettingsScreen> {
 
                         const SizedBox(height: 20),
 
-                        // Máximo registrado
+                        // Información
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: Colors.grey.shade100,
+                            color: Colors.blue.shade50,
                             borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.blue.shade200),
                           ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                              Row(
                                 children: [
+                                  Icon(Icons.info, color: Colors.blue.shade600),
+                                  const SizedBox(width: 8),
                                   const Text(
-                                    'Máximo registrado',
+                                    'Información de Niveles',
                                     style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                  Text(
-                                    '${_maxDecibel.toStringAsFixed(1)} dB',
-                                    style: const TextStyle(
-                                      fontSize: 18,
                                       fontWeight: FontWeight.bold,
-                                      color: Color(0xFFA03E99),
+                                      color: Colors.blue,
                                     ),
                                   ),
                                 ],
                               ),
-                              ElevatedButton(
-                                onPressed: _resetMaxDecibel,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.grey.shade300,
-                                  foregroundColor: Colors.grey.shade700,
-                                ),
-                                child: const Text('Reset'),
+                              const SizedBox(height: 8),
+                              const Text(
+                                '• 60-70 dB: Conversación normal\n'
+                                '• 70-80 dB: Tráfico, aspiradora\n'
+                                '• 80-90 dB: Muy ruidoso\n'
+                                '• 90+ dB: Peligroso para la audición\n\n'
+                                '⚠️ Al superar el umbral, se activará el protocolo de emergencia',
+                                style: TextStyle(fontSize: 14),
                               ),
                             ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 20),
-
-                        // Información
-                        const Text(
-                          'Información:',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFFA03E99),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 16.0),
-                          child: Text(
-                            '• 60-70 dB: Conversación normal\n'
-                            '• 70-80 dB: Tráfico, aspiradora\n'
-                            '• 80-90 dB: Muy ruidoso\n'
-                            '• 90+ dB: Peligroso para la audición',
-                            style: TextStyle(fontSize: 14),
                           ),
                         ),
 
                         const SizedBox(height: 30),
 
-                        // Botones de control
-                        if (!_backgroundMonitoring) ...[
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ElevatedButton(
-                                  onPressed: _toggleRecording,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor:
-                                        _isRecording
-                                            ? Colors.red
-                                            : Colors.green,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 15,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        _isRecording ? Icons.stop : Icons.mic,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        _isRecording
-                                            ? 'Detener'
-                                            : 'Iniciar Detección',
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 15),
-                        ],
-
+                        // Botón guardar
                         CustomButton(
                           text: 'Guardar Configuración',
                           icon: Icons.save,

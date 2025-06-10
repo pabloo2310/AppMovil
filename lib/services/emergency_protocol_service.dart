@@ -56,9 +56,9 @@ class EmergencyProtocolService {
     _globalContext = context;
   }
 
-  Future<Map<String, dynamic>> startEmergencyProtocol({bool fromShake = false}) async {
+  Future<Map<String, dynamic>> startEmergencyProtocol({bool fromShake = false, bool fromDecibel = false}) async {
     print(
-      'EmergencyProtocolService: startEmergencyProtocol called, current state: $_isProtocolActive, fromShake: $fromShake',
+      'EmergencyProtocolService: startEmergencyProtocol called, current state: $_isProtocolActive, fromShake: $fromShake, fromDecibel: $fromDecibel',
     );
 
     if (_isProtocolActive) {
@@ -101,6 +101,16 @@ class EmergencyProtocolService {
       final location = results[1] as Map<String, double>;
       _maxRecordingDuration = userConfig['audioDuration'];
 
+      // Determinar el origen de la activación
+      String activationSource;
+      if (fromShake) {
+        activationSource = 'shake_detection';
+      } else if (fromDecibel) {
+        activationSource = 'decibel_detection';
+      } else {
+        activationSource = 'manual_activation';
+      }
+
       // 5. Preparar datos para enviar DESPUÉS de la grabación
       _protocolData = {
         'audio': 'no implementado aun',
@@ -110,7 +120,7 @@ class EmergencyProtocolService {
         'hora': _protocolStartTime,
         'nombre': userConfig['userName'],
         'userId': user.uid,
-        'activatedBy': fromShake ? 'shake_detection' : 'manual_activation',
+        'activatedBy': activationSource,
       };
 
       // 6. Mostrar ventana emergente INMEDIATAMENTE (siempre que haya contexto)
@@ -129,12 +139,24 @@ class EmergencyProtocolService {
       // 8. Mostrar notificación en la app actual
       if (_globalContext != null) {
         try {
+          String message;
+          Color backgroundColor;
+          
+          if (fromShake) {
+            message = '🚨 Protocolo activado por sacudida detectada';
+            backgroundColor = Colors.deepOrange;
+          } else if (fromDecibel) {
+            message = '🚨 Protocolo activado por nivel de ruido alto';
+            backgroundColor = Colors.purple;
+          } else {
+            message = '🚨 Protocolo de emergencia iniciado';
+            backgroundColor = Colors.orange;
+          }
+          
           ScaffoldMessenger.of(_globalContext!).showSnackBar(
             SnackBar(
-              content: Text(fromShake 
-                  ? '🚨 Protocolo activado por sacudida - Ventana de cancelación disponible'
-                  : '🚨 Protocolo de emergencia iniciado'),
-              backgroundColor: fromShake ? Colors.deepOrange : Colors.orange,
+              content: Text(message),
+              backgroundColor: backgroundColor,
               duration: const Duration(seconds: 3),
             ),
           );
@@ -143,13 +165,24 @@ class EmergencyProtocolService {
         }
       }
 
-      AuditLogger.log('Protocolo de emergencia iniciado ${fromShake ? "por sacudida" : "manualmente"}');
+      String logMessage;
+      if (fromShake) {
+        logMessage = "por sacudida";
+      } else if (fromDecibel) {
+        logMessage = "por nivel de ruido alto";
+      } else {
+        logMessage = "manualmente";
+      }
+      
+      AuditLogger.log('Protocolo de emergencia iniciado $logMessage');
 
       return {
         'success': true,
         'message': fromShake 
             ? 'Protocolo activado por sacudida detectada'
-            : 'Protocolo de emergencia iniciado',
+            : (fromDecibel 
+                ? 'Protocolo activado por nivel de ruido alto'
+                : 'Protocolo de emergencia iniciado'),
         'audioDuration': userConfig['audioDuration'],
       };
     } catch (e) {
@@ -289,6 +322,10 @@ class EmergencyProtocolService {
     _removeCancelOverlay();
     
     try {
+      String activationSource = _protocolData?['activatedBy'] ?? 'manual_activation';
+      bool fromShake = activationSource == 'shake_detection';
+      bool fromDecibel = activationSource == 'decibel_detection';
+      
       _cancelOverlay = OverlayEntry(
         builder: (context) => _CancelProtocolOverlay(
           onCancel: () async {
@@ -297,7 +334,8 @@ class EmergencyProtocolService {
           onDismiss: _removeCancelOverlay,
           recordingDuration: _currentRecordingDuration,
           maxDuration: _maxRecordingDuration,
-          activatedByShake: _protocolData?['activatedBy'] == 'shake_detection',
+          activatedByShake: fromShake,
+          activatedByDecibel: fromDecibel,
         ),
       );
       
@@ -325,6 +363,20 @@ class EmergencyProtocolService {
     if (_globalContext == null) return;
     
     try {
+      String activationSource = data['activatedBy'] ?? 'manual_activation';
+      String activationText;
+      
+      switch (activationSource) {
+        case 'shake_detection':
+          activationText = 'Sacudida';
+          break;
+        case 'decibel_detection':
+          activationText = 'Nivel de ruido alto';
+          break;
+        default:
+          activationText = 'Manual';
+      }
+      
       showDialog(
         context: _globalContext!,
         builder: (context) => AlertDialog(
@@ -347,7 +399,7 @@ class EmergencyProtocolService {
               Text('👤 Usuario: ${data['nombre']}'),
               Text('📱 Teléfono: ${data['numero']}'),
               Text('🆔 ID: ${data['userId']}'),
-              Text('🔧 Activado por: ${data['activatedBy'] == 'shake_detection' ? 'Sacudida' : 'Manual'}'),
+              Text('🔧 Activado por: $activationText'),
               const SizedBox(height: 10),
               if (path != null)
                 Text(
@@ -562,6 +614,7 @@ class _CancelProtocolOverlay extends StatefulWidget {
   final int recordingDuration;
   final int maxDuration;
   final bool activatedByShake;
+  final bool activatedByDecibel;
 
   const _CancelProtocolOverlay({
     required this.onCancel,
@@ -569,6 +622,7 @@ class _CancelProtocolOverlay extends StatefulWidget {
     required this.recordingDuration,
     required this.maxDuration,
     this.activatedByShake = false,
+    this.activatedByDecibel = false,
   });
 
   @override
@@ -648,6 +702,25 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
 
   @override
   Widget build(BuildContext context) {
+    // Determinar el título y el ícono según el origen de la activación
+    String title;
+    IconData iconData;
+    Color iconColor;
+    
+    if (widget.activatedByShake) {
+      title = '🚨 Protocolo Activado por Sacudida';
+      iconData = Icons.vibration;
+      iconColor = Colors.deepOrange;
+    } else if (widget.activatedByDecibel) {
+      title = '🚨 Protocolo Activado por Ruido Alto';
+      iconData = Icons.volume_up;
+      iconColor = Colors.purple;
+    } else {
+      title = '🚨 Protocolo de Emergencia Activado';
+      iconData = Icons.emergency;
+      iconColor = Colors.orange;
+    }
+
     return Material(
       color: Colors.transparent,
       child: Container(
@@ -684,21 +757,19 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                           width: 80,
                           height: 80,
                           decoration: BoxDecoration(
-                            color: Colors.orange.withOpacity(0.1),
+                            color: iconColor.withOpacity(0.1),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(
-                            Icons.emergency,
+                          child: Icon(
+                            iconData,
                             size: 40,
-                            color: Colors.orange,
+                            color: iconColor,
                           ),
                         ),
                         const SizedBox(height: 20),
                         
                         Text(
-                          widget.activatedByShake
-                              ? '🚨 Protocolo de Emergencia Activado por Sacudida'
-                              : '🚨 Protocolo de Emergencia Activado',
+                          title,
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -742,15 +813,15 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                           height: 60,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            border: Border.all(color: Colors.orange, width: 3),
+                            border: Border.all(color: iconColor, width: 3),
                           ),
                           child: Center(
                             child: Text(
                               '$_countdown',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.orange,
+                                color: iconColor,
                               ),
                             ),
                           ),

@@ -36,9 +36,9 @@ class SettingsScreen extends StatelessWidget {
                     children: [
                       _buildSettingItem(
                         context,
-                        'Comandos de voz',
-                        Icons.mic,
-                        'voice_commands',
+                        'Editar perfil',
+                        Icons.edit,
+                        'edit_profile',
                       ),
                       const Divider(),
                       _buildSettingItem(
@@ -50,13 +50,6 @@ class SettingsScreen extends StatelessWidget {
                       const Divider(),
                       _buildSettingItem(
                         context,
-                        'Detector de decibelios',
-                        Icons.volume_up,
-                        'decibel_settings',
-                      ),
-                      const Divider(),
-                      _buildSettingItem(
-                        context,
                         'Tamaño del audio',
                         Icons.audiotrack,
                         'audio_settings',
@@ -64,23 +57,23 @@ class SettingsScreen extends StatelessWidget {
                       const Divider(),
                       _buildSettingItem(
                         context,
+                        'Comandos de voz',
+                        Icons.mic,
+                        'voice_commands',
+                      ),
+                      const Divider(),
+                      _buildSettingItem(
+                        context,
+                        'Detector de decibelios',
+                        Icons.volume_up,
+                        'decibel_settings',
+                      ),
+                      const Divider(),
+                      _buildSettingItem(
+                        context,
                         'Detector de sacudida',
                         Icons.vibration,
                         'shake_settings',
-                      ),
-                      const Divider(),
-                      _buildSettingItem(
-                        context,
-                        'SOS - Emergencia',
-                        Icons.emergency,
-                        'sos_app',
-                      ),
-                      const Divider(),
-                      _buildSettingItem(
-                        context,
-                        'Editar perfil',
-                        Icons.edit,
-                        'edit_profile',
                       ),
                     ],
                   ),

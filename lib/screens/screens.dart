@@ -7,7 +7,5 @@ export 'emergency_contacts_screen.dart';
 export 'decibel_settings_screen.dart';
 export 'audio_settings_screen.dart';
 export 'error_screen.dart';
-export 'sos_app.dart';
 export 'shake_settings_screen.dart';
-export 'location_screen.dart';
 export 'edit_profile_screen.dart';
