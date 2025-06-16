@@ -59,9 +59,16 @@ class EmergencyProtocolService {
     print(
       'EmergencyProtocolService: Setting global context: ${context != null}',
     );
+    print(
+      'EmergencyProtocolService: Setting global context: ${context != null}',
+    );
     _globalContext = context;
   }
 
+  Future<Map<String, dynamic>> startEmergencyProtocol({
+    bool fromShake = false,
+    bool fromDecibel = false,
+  }) async {
   Future<Map<String, dynamic>> startEmergencyProtocol({
     bool fromShake = false,
     bool fromDecibel = false,
@@ -169,10 +176,17 @@ class EmergencyProtocolService {
         logMessage = "manualmente";
       }
 
+
       AuditLogger.log('Protocolo de emergencia iniciado $logMessage');
 
       return {
         'success': true,
+        'message':
+            fromShake
+                ? 'Protocolo activado por sacudida detectada'
+                : (fromDecibel
+                    ? 'Protocolo activado por nivel de ruido alto'
+                    : 'Protocolo de emergencia iniciado'),
         'message':
             fromShake
                 ? 'Protocolo activado por sacudida detectada'
@@ -350,17 +364,25 @@ class EmergencyProtocolService {
       print(
         'EmergencyProtocolService: No global context available for overlay',
       );
+      print(
+        'EmergencyProtocolService: No global context available for overlay',
+      );
       return;
     }
+
 
     // Remover overlay anterior si existe
     _removeCancelOverlay();
 
+
     try {
+      String activationSource =
+          _protocolData?['activatedBy'] ?? 'manual_activation';
       String activationSource =
           _protocolData?['activatedBy'] ?? 'manual_activation';
       bool fromShake = activationSource == 'shake_detection';
       bool fromDecibel = activationSource == 'decibel_detection';
+
 
       _cancelOverlay = OverlayEntry(
         builder:
@@ -374,7 +396,19 @@ class EmergencyProtocolService {
               activatedByShake: fromShake,
               activatedByDecibel: fromDecibel,
             ),
+        builder:
+            (context) => _CancelProtocolOverlay(
+              onCancel: () async {
+                await cancelEmergencyProtocol();
+              },
+              onDismiss: _removeCancelOverlay,
+              recordingDuration: _currentRecordingDuration,
+              maxDuration: _maxRecordingDuration,
+              activatedByShake: fromShake,
+              activatedByDecibel: fromDecibel,
+            ),
       );
+
 
       Overlay.of(_globalContext!).insert(_cancelOverlay!);
       print('EmergencyProtocolService: Cancel overlay inserted successfully');
@@ -399,9 +433,11 @@ class EmergencyProtocolService {
   void _showProtocolCompleteDialog(String? path, Map<String, dynamic> data, String? audioUrl) {
     if (_globalContext == null) return;
 
+
     try {
       String activationSource = data['activatedBy'] ?? 'manual_activation';
       String activationText;
+
 
       switch (activationSource) {
         case 'shake_detection':
@@ -413,6 +449,7 @@ class EmergencyProtocolService {
         default:
           activationText = 'Manual';
       }
+
 
       showDialog(
         context: _globalContext!,
@@ -873,7 +910,13 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
     _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
     );
+    _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
+    );
 
+    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
+    );
     _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
     );
@@ -889,9 +932,11 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
         return;
       }
 
+
       setState(() {
         _countdown--;
       });
+
 
       // Solo cerrar cuando llegue exactamente a 0
       if (_countdown <= 0) {
@@ -922,6 +967,7 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
     String title;
     IconData iconData;
     Color iconColor;
+
 
     if (widget.activatedByShake) {
       title = '🚨 Protocolo Activado por Sacudida';
@@ -977,8 +1023,10 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                             shape: BoxShape.circle,
                           ),
                           child: Icon(iconData, size: 40, color: iconColor),
+                          child: Icon(iconData, size: 40, color: iconColor),
                         ),
                         const SizedBox(height: 20),
+
 
                         Text(
                           title,
@@ -991,8 +1039,13 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                         ),
                         const SizedBox(height: 12),
 
+
                         // Información de grabación
                         Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
                             vertical: 8,
@@ -1012,6 +1065,7 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                         ),
                         const SizedBox(height: 12),
 
+
                         Text(
                           'Se cerrará automáticamente en $_countdown segundos',
                           style: const TextStyle(
@@ -1021,6 +1075,7 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 20),
+
 
                         // Contador visual
                         Container(
@@ -1042,6 +1097,7 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                           ),
                         ),
                         const SizedBox(height: 24),
+
 
                         // Botón de cancelar
                         SizedBox(
@@ -1069,7 +1125,9 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                           ),
                         ),
 
+
                         const SizedBox(height: 12),
+
 
                         const Text(
                           'Si no cancelas, el protocolo continuará automáticamente',
