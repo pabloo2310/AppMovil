@@ -38,8 +38,8 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
           setState(() {
             contacts.clear(); // Clear existing contacts
 
-            // Cargar todos los contactos de emergencia (hasta 10)
-            for (int i = 1; i <= 10; i++) {
+            // Cargar todos los contactos de emergencia (hasta 2)
+            for (int i = 1; i <= 2; i++) {
               final contactName = data['EmergencyContact${i}Name'];
               final contactPhone = data['EmergencyContact${i}Phone'];
               
@@ -131,8 +131,8 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
         contactsData['EmergencyContact${index}Phone'] = contact['number'];
       }
 
-      // Limpiar contactos que ya no existen (hasta 10)
-      for (int i = contacts.length + 1; i <= 10; i++) {
+      // Limpiar contactos que ya no existen (hasta 2)
+      for (int i = contacts.length + 1; i <= 2; i++) {
         contactsData['EmergencyContact${i}Name'] = FieldValue.delete();
         contactsData['EmergencyContact${i}Phone'] = FieldValue.delete();
       }
@@ -332,38 +332,39 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
                               ),
                             ),
                           ),
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 8.0),
-                              child: ElevatedButton.icon(
-                                onPressed: () {
-                                  setState(() {
-                                    contacts.add({
-                                      'name': 'Nuevo Contacto',
-                                      'number': 'No configurado',
+                          if (contacts.length < 2) // Solo mostrar si hay menos de 2 contactos
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 8.0),
+                                child: ElevatedButton.icon(
+                                  onPressed: () {
+                                    setState(() {
+                                      contacts.add({
+                                        'name': 'Nuevo Contacto',
+                                        'number': 'No configurado',
+                                      });
                                     });
-                                  });
-                                },
-                                icon: const Icon(
-                                  Icons.add,
-                                  color: Colors.white,
-                                ),
-                                label: const Text(
-                                  'Agregar Contacto',
-                                  style: TextStyle(color: Colors.white),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFA03E99),
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 15,
+                                  },
+                                  icon: const Icon(
+                                    Icons.add,
+                                    color: Colors.white,
                                   ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
+                                  label: const Text(
+                                    'Agregar Contacto',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFFA03E99),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 15,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 10),
@@ -385,7 +386,7 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
                             const SizedBox(width: 8),
                             const Expanded(
                               child: Text(
-                                'Los contactos se guardan de forma segura y solo tú puedes acceder a ellos.',
+                                'Máximo 2 contactos de emergencia. Los contactos se guardan de forma segura.',
                                 style: TextStyle(fontSize: 12),
                               ),
                             ),
@@ -417,9 +418,22 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
       leading: const Icon(Icons.contact_phone, color: Color(0xFFA03E99)),
       title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
       subtitle: Text(number),
-      trailing: IconButton(
-        icon: const Icon(Icons.edit, color: Color(0xFFF5A623)),
-        onPressed: () => _pickContact(index),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.edit, color: Color(0xFFF5A623)),
+            onPressed: () => _pickContact(index),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete, color: Colors.red),
+            onPressed: () {
+              setState(() {
+                contacts.removeAt(index);
+              });
+            },
+          ),
+        ],
       ),
     );
   }
