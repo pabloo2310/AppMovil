@@ -1,5 +1,9 @@
 export 'audio_recorder_service.dart';
-export 'shake_detector_service.dart';
-export 'emergency_protocol_service.dart';
-export 'decibel_detector_service.dart';
+export 'audit_logger.dart';
 export 'background_decibel_service.dart';
+export 'background_emergency_service.dart';
+export 'decibel_detector_service.dart';
+export 'emergency_protocol_service.dart';
+export 'emergency_background_manager.dart';
+export 'free_file_upload_service.dart';
+export 'shake_detector_service.dart';

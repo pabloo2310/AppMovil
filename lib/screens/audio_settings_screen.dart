@@ -13,8 +13,6 @@ class AudioSettingsScreen extends StatefulWidget {
 
 class _AudioSettingsScreenState extends State<AudioSettingsScreen> {
   double _recordingDuration = 30.0;
-  String _selectedQuality = 'Media';
-  final List<String> _qualities = ['Baja', 'Media', 'Alta'];
   bool _isLoading = true;
 
   @override
@@ -35,15 +33,9 @@ class _AudioSettingsScreenState extends State<AudioSettingsScreen> {
         if (doc.exists) {
           final data = doc.data()!;
           setState(() {
-            // Cargar duración de audio
             _recordingDuration = (data['AudioDuracion'] as num?)?.toDouble() ?? 
                                 (data['recordingDuration'] as num?)?.toDouble() ?? 
                                 30.0;
-            
-            // Cargar calidad de audio
-            final quality = data['AudioCalidad'] ?? data['quality'];
-            _selectedQuality = _qualities.contains(quality) ? quality : 'Media';
-            
             _isLoading = false;
           });
         } else {
@@ -56,12 +48,6 @@ class _AudioSettingsScreenState extends State<AudioSettingsScreen> {
         setState(() {
           _isLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al cargar configuración: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
       }
     } else {
       setState(() {
@@ -80,7 +66,7 @@ class _AudioSettingsScreenState extends State<AudioSettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Configuración de Audio',
+          'Duración del Audio',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         backgroundColor: const Color(0xFFF5A623),
@@ -116,20 +102,38 @@ class _AudioSettingsScreenState extends State<AudioSettingsScreen> {
                       ),
                       const SizedBox(height: 20),
                       const Text(
-                        'Ajusta la duración y calidad de las grabaciones de audio',
+                        'Ajusta la duración de las grabaciones de audio de emergencia',
                         style: TextStyle(fontSize: 16),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 30),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      const SizedBox(height: 40),
+                      
+                      // Duración actual destacada
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFA03E99).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(
+                            color: const Color(0xFFA03E99),
+                            width: 2,
+                          ),
+                        ),
+                        child: Column(
                           children: [
-                            const Text('Duración (segundos):'),
+                            const Text(
+                              'Duración Actual',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFA03E99),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
                             Text(
-                              _recordingDuration.toStringAsFixed(0),
+                              '${_recordingDuration.toStringAsFixed(0)} segundos',
                               style: const TextStyle(
+                                fontSize: 32,
                                 fontWeight: FontWeight.bold,
                                 color: Color(0xFFA03E99),
                               ),
@@ -137,6 +141,18 @@ class _AudioSettingsScreenState extends State<AudioSettingsScreen> {
                           ],
                         ),
                       ),
+                      
+                      const SizedBox(height: 30),
+                      
+                      // Control deslizante
+                      const Text(
+                        'Ajustar duración:',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
                       Slider(
                         value: _recordingDuration,
                         min: 10.0,
@@ -150,107 +166,99 @@ class _AudioSettingsScreenState extends State<AudioSettingsScreen> {
                           });
                         },
                       ),
-                      const SizedBox(height: 20),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      
+                      // Indicadores de rango
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16.0),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text('Calidad de grabación:'),
-                            DropdownButton<String>(
-                              value: _selectedQuality,
-                              icon: const Icon(
-                                Icons.arrow_drop_down,
-                                color: Color(0xFFA03E99),
-                              ),
-                              elevation: 16,
-                              style: const TextStyle(color: Color(0xFFA03E99)),
-                              underline: Container(
-                                height: 2,
-                                color: const Color(0xFFA03E99),
-                              ),
-                              onChanged: (String? value) {
-                                setState(() {
-                                  _selectedQuality = value!;
-                                });
-                              },
-                              items:
-                                  _qualities.map<DropdownMenuItem<String>>((
-                                    String value,
-                                  ) {
-                                    return DropdownMenuItem<String>(
-                                      value: value,
-                                      child: Text(value),
-                                    );
-                                  }).toList(),
+                            Text('10s', style: TextStyle(color: Colors.grey)),
+                            Text('60s', style: TextStyle(color: Colors.grey)),
+                          ],
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 30),
+                      
+                      // Información
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.blue.shade200),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.info, color: Colors.blue.shade600),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  'Información',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              '• Duración recomendada: 30 segundos\n'
+                              '• Mayor duración = más información\n'
+                              '• Menor duración = activación más rápida\n'
+                              '• El audio se sube automáticamente',
+                              style: TextStyle(fontSize: 14),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 20),
-                      const Text(
-                        'Información:',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFFA03E99),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16.0),
-                        child: Text(
-                          '• Mayor duración consume más espacio\n'
-                          '• Mayor calidad mejora el reconocimiento\n'
-                          '• Calidad alta consume más batería',
-                          style: TextStyle(fontSize: 14),
-                        ),
-                      ),
+                      
                       const Spacer(),
-          CustomButton(
-            text: 'Guardar Configuración',
-            icon: Icons.save,
-            onPressed: () async {
-              try {
-                // Guarda la configuración en Firestore
-                final user = FirebaseAuth.instance.currentUser;
-                if (user != null) {
-                  final settingsRef = FirebaseFirestore.instance
-                      .collection('info_usuario')
-                      .doc(user.uid);
+                      
+                      CustomButton(
+                        text: 'Guardar Configuración',
+                        icon: Icons.save,
+                        onPressed: () async {
+                          try {
+                            final user = FirebaseAuth.instance.currentUser;
+                            if (user != null) {
+                              final settingsRef = FirebaseFirestore.instance
+                                  .collection('info_usuario')
+                                  .doc(user.uid);
 
-                  await settingsRef.set({
-                    'AudioDuracion': _recordingDuration,
-                    'AudioCalidad': _selectedQuality,
-                    'AudioTimestamp': FieldValue.serverTimestamp(),
-                  }, SetOptions(merge: true));
+                              await settingsRef.set({
+                                'AudioDuracion': _recordingDuration,
+                                'AudioTimestamp': FieldValue.serverTimestamp(),
+                              }, SetOptions(merge: true));
 
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        '🎵 Configuración de audio guardada exitosamente',
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('🎵 Duración de audio guardada exitosamente'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Error: Usuario no autenticado'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Error al guardar configuración: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        },
                       ),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Error: Usuario no autenticado'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Error al guardar configuración: $e'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-          ),
                       const SizedBox(height: 20),
                     ],
                   ),

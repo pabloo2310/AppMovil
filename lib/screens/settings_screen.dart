@@ -50,7 +50,7 @@ class SettingsScreen extends StatelessWidget {
                       const Divider(),
                       _buildSettingItem(
                         context,
-                        'Tamaño del audio',
+                        'Duración del audio',
                         Icons.audiotrack,
                         'audio_settings',
                       ),
@@ -67,6 +67,7 @@ class SettingsScreen extends StatelessWidget {
                         'Detector de decibelios',
                         Icons.volume_up,
                         'decibel_settings',
+                        subtitle: 'Incluye protección en segundo plano',
                       ),
                       const Divider(),
                       _buildSettingItem(
@@ -74,6 +75,7 @@ class SettingsScreen extends StatelessWidget {
                         'Detector de sacudida',
                         Icons.vibration,
                         'shake_settings',
+                        subtitle: 'Incluye protección en segundo plano',
                       ),
                     ],
                   ),
@@ -90,14 +92,21 @@ class SettingsScreen extends StatelessWidget {
     BuildContext context,
     String title,
     IconData icon,
-    String route,
-  ) {
+    String route, {
+    String? subtitle,
+  }) {
     return ListTile(
       leading: Icon(icon, color: const Color(0xFFA03E99)),
       title: Text(
         title,
         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
       ),
+      subtitle: subtitle != null 
+          ? Text(
+              subtitle,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            )
+          : null,
       trailing: const Icon(Icons.arrow_forward_ios, size: 16),
       onTap: () => Navigator.pushNamed(context, route),
     );

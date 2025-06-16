@@ -9,3 +9,4 @@ export 'audio_settings_screen.dart';
 export 'error_screen.dart';
 export 'shake_settings_screen.dart';
 export 'edit_profile_screen.dart';
+export 'background_emergency_settings_screen.dart';

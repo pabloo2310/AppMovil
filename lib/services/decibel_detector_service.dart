@@ -33,10 +33,10 @@ class DecibelDetectorService {
   StreamSubscription<Uint8List>? _audioStreamSubscription;
   Timer? _amplitudeTimer;
   
-  // Callbacks
-  Function(double)? _onDecibelUpdate;
-  Function(double)? _onMaxDecibelUpdate;
-  VoidCallback? _onHighDecibelDetected;
+  // Callbacks - AHORA SON PÚBLICOS
+  Function(double)? onDecibelUpdate;
+  Function(double)? onMaxDecibelUpdate;
+  VoidCallback? onHighDecibelDetected;
 
   // Getters
   bool get isRecording => _isRecording;
@@ -51,14 +51,27 @@ class DecibelDetectorService {
     Function(double)? onMaxDecibelUpdate,
     VoidCallback? onHighDecibelDetected,
   }) async {
-    _onDecibelUpdate = onDecibelUpdate;
-    _onMaxDecibelUpdate = onMaxDecibelUpdate;
-    _onHighDecibelDetected = onHighDecibelDetected;
+    this.onDecibelUpdate = onDecibelUpdate;
+    this.onMaxDecibelUpdate = onMaxDecibelUpdate;
+    this.onHighDecibelDetected = onHighDecibelDetected;
     
     await _initializeNotifications();
     await _requestPermissions();
     await _loadSettings();
     await _checkBackgroundServiceStatus();
+  }
+
+  // NUEVOS MÉTODOS PÚBLICOS PARA CONFIGURAR CALLBACKS
+  void setOnDecibelUpdate(Function(double)? callback) {
+    onDecibelUpdate = callback;
+  }
+
+  void setOnMaxDecibelUpdate(Function(double)? callback) {
+    onMaxDecibelUpdate = callback;
+  }
+
+  void setOnHighDecibelDetected(VoidCallback? callback) {
+    onHighDecibelDetected = callback;
   }
 
   Future<void> _loadSettings() async {
@@ -84,6 +97,32 @@ class DecibelDetectorService {
     final prefs = await SharedPreferences.getInstance();
     _notificationThreshold = prefs.getDouble('notification_threshold') ?? _notificationThreshold;
     _notificationsEnabled = prefs.getBool('notifications_enabled') ?? _notificationsEnabled;
+  }
+
+  // NUEVO: Método para verificar si debe iniciarse automáticamente
+  Future<bool> shouldAutoStart() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('info_usuario')
+          .doc(user.uid)
+          .get();
+      
+      if (doc.exists) {
+        final data = doc.data()!;
+        final enabled = data['DecibelEnabled'] ?? false;
+        final backgroundEnabled = data['DecibelBackgroundEnabled'] ?? false;
+        
+        // Solo iniciar en primer plano si está habilitado Y no hay segundo plano activo
+        return enabled && !backgroundEnabled;
+      }
+    } catch (e) {
+      print('Error checking auto start: $e');
+    }
+    
+    return false;
   }
 
   Future<void> saveSettings() async {
@@ -190,6 +229,7 @@ class DecibelDetectorService {
           _generateFallbackDecibel();
         });
 
+        print('🔊 Detección de decibelios iniciada globalmente');
       }
     } catch (e) {
       print('Error al iniciar grabación: $e');
@@ -239,23 +279,25 @@ class DecibelDetectorService {
     _currentDecibel = decibel;
     if (_currentDecibel > _maxDecibel) {
       _maxDecibel = _currentDecibel;
-      _onMaxDecibelUpdate?.call(_maxDecibel);
+      onMaxDecibelUpdate?.call(_maxDecibel);
     }
     
-    _onDecibelUpdate?.call(_currentDecibel);
+    onDecibelUpdate?.call(_currentDecibel);
 
     if (_notificationsEnabled && _currentDecibel >= _notificationThreshold) {
-      _showHighDecibelNotification(_currentDecibel);
-      _onHighDecibelDetected?.call();
+      // Solo mostrar notificación si no hay protocolo activo
+      if (!_emergencyService.isProtocolActive) {
+        onHighDecibelDetected?.call();
+      }
       
-      // NUEVO: Activar protocolo de emergencia si el nivel es muy alto
+      // Activar protocolo de emergencia si el nivel es muy alto
       _activateEmergencyProtocolIfNeeded(_currentDecibel);
     }
   }
 
-  // NUEVO: Método para activar el protocolo de emergencia si el nivel de ruido es muy alto
+  // Método para activar el protocolo de emergencia si el nivel de ruido es muy alto
   Future<void> _activateEmergencyProtocolIfNeeded(double decibel) async {
-    // Activar exactamente en el umbral configurado, sin añadir 10% adicional
+    // Activar exactamente en el umbral configurado
     if (decibel >= _notificationThreshold) {
       // Evitar activaciones múltiples en un corto período de tiempo (60 segundos)
       final now = DateTime.now();
@@ -280,37 +322,6 @@ class DecibelDetectorService {
     }
   }
 
-  Future<void> _showHighDecibelNotification(double decibel) async {
-    final now = DateTime.now();
-    if (_lastNotificationTime != null && 
-        now.difference(_lastNotificationTime!).inSeconds < 10) {
-      return;
-    }
-    _lastNotificationTime = now;
-    final AndroidNotificationDetails androidPlatformChannelSpecifics =
-        AndroidNotificationDetails(
-          'high_decibel_channel',
-          'Alertas de Ruido Alto',
-          channelDescription: 'Notificaciones cuando el ruido supera el umbral',
-          importance: Importance.high,
-          priority: Priority.high,
-          icon: '@mipmap/ic_launcher',
-          color: const Color(0xFFA03E99),
-          enableVibration: true,
-          playSound: true,
-        );
-    
-    final NotificationDetails platformChannelSpecifics = 
-        NotificationDetails(android: androidPlatformChannelSpecifics);
-    
-    await _notificationsPlugin.show(
-      0,
-      '⚠️ Nivel de Ruido Alto',
-      'Se detectaron ${decibel.toStringAsFixed(1)} dB - ${_getNoiseLevel(decibel)}',
-      platformChannelSpecifics,
-    );
-  }
-
   Future<void> stopRecording() async {
     try {
       await _recorder.stop();
@@ -319,6 +330,8 @@ class DecibelDetectorService {
       
       _isRecording = false;
       _currentDecibel = 0.0;
+      
+      print('🔊 Detección de decibelios detenida');
     } catch (e) {
       print('Error al detener grabación: $e');
     }
@@ -326,7 +339,7 @@ class DecibelDetectorService {
 
   void resetMaxDecibel() {
     _maxDecibel = 0.0;
-    _onMaxDecibelUpdate?.call(_maxDecibel);
+    onMaxDecibelUpdate?.call(_maxDecibel);
   }
 
   void setThreshold(double threshold) {
@@ -343,9 +356,10 @@ class DecibelDetectorService {
     }
   }
 
-  void setNotificationsEnabled(bool enabled) {
+  // CORREGIDO: Ahora es Future<void>
+  Future<void> setNotificationsEnabled(bool enabled) async {
     _notificationsEnabled = enabled;
-    saveSettings();
+    await saveSettings();
     
     // Actualizar servicio en segundo plano si está activo
     if (_isBackgroundMonitoring) {
@@ -356,11 +370,18 @@ class DecibelDetectorService {
       });
     }
     
-    // Si se activa, iniciar la grabación automáticamente
-    if (enabled && !_isRecording && !_isBackgroundMonitoring) {
-      startRecording();
-    } else if (!enabled && _isRecording && !_isBackgroundMonitoring) {
-      stopRecording();
+    // Manejar inicio/parada automática del servicio global
+    if (enabled) {
+      // Verificar si debe iniciar automáticamente
+      final shouldStart = await shouldAutoStart();
+      if (shouldStart && !_isRecording && !_isBackgroundMonitoring) {
+        await startRecording();
+      }
+    } else {
+      // Si se desactiva, detener el servicio
+      if (_isRecording && !_isBackgroundMonitoring) {
+        await stopRecording();
+      }
     }
   }
 

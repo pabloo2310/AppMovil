@@ -66,6 +66,7 @@ class BackgroundDecibelService {
     StreamSubscription<Uint8List>? audioStreamSubscription;
     Timer? amplitudeTimer;
     DateTime? lastNotificationTime;
+    DateTime? lastEmergencyTime;
     
     // Obtener configuraciones
     final prefs = await SharedPreferences.getInstance();
@@ -118,6 +119,25 @@ class BackgroundDecibelService {
       );
     }
 
+    // Función para activar protocolo de emergencia
+    Future<void> activateEmergencyProtocol(double decibel) async {
+      final now = DateTime.now();
+      
+      // Evitar activaciones múltiples muy seguidas (2 minutos)
+      if (lastEmergencyTime != null && 
+          now.difference(lastEmergencyTime!).inMinutes < 2) {
+        return;
+      }
+      lastEmergencyTime = now;
+
+      // Enviar comando a la app principal
+      service.invoke('emergency_detected', {
+        'reason': 'RUIDO ALTO',
+        'details': '${decibel.toStringAsFixed(1)} dB (umbral: ${threshold.toInt()} dB)',
+        'timestamp': now.toIso8601String(),
+      });
+    }
+
     // Función para procesar audio
     void processAudioData(Uint8List audioData) {
       if (audioData.isEmpty) return;
@@ -155,6 +175,7 @@ class BackgroundDecibelService {
       // Verificar si se debe mostrar alerta
       if (enabled && decibels >= threshold) {
         showHighDecibelNotification(decibels);
+        activateEmergencyProtocol(decibels);
       }
     }
 
@@ -176,7 +197,9 @@ class BackgroundDecibelService {
           },
         );
 
-        // Timer de respaldo
+        print('🔊 Servicio de decibelios en segundo plano iniciado');
+
+        // Timer de respaldo para generar valores simulados
         amplitudeTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
           // Generar valores simulados como respaldo
           Random random = Random();
@@ -192,6 +215,7 @@ class BackgroundDecibelService {
 
           if (enabled && result >= threshold) {
             showHighDecibelNotification(result);
+            activateEmergencyProtocol(result);
           }
         });
 

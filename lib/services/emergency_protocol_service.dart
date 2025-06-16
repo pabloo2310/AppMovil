@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:app_bullying/services/audio_recorder_service.dart';
 import 'package:app_bullying/services/audit_logger.dart';
+import 'package:app_bullying/services/free_file_upload_service.dart';
+import 'package:url_launcher/url_launcher_string.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class EmergencyProtocolService {
   static final EmergencyProtocolService _instance =
@@ -52,11 +56,16 @@ class EmergencyProtocolService {
 
   // Método para registrar el contexto global
   void setGlobalContext(BuildContext? context) {
-    print('EmergencyProtocolService: Setting global context: ${context != null}');
+    print(
+      'EmergencyProtocolService: Setting global context: ${context != null}',
+    );
     _globalContext = context;
   }
 
-  Future<Map<String, dynamic>> startEmergencyProtocol({bool fromShake = false, bool fromDecibel = false}) async {
+  Future<Map<String, dynamic>> startEmergencyProtocol({
+    bool fromShake = false,
+    bool fromDecibel = false,
+  }) async {
     print(
       'EmergencyProtocolService: startEmergencyProtocol called, current state: $_isProtocolActive, fromShake: $fromShake, fromDecibel: $fromDecibel',
     );
@@ -113,7 +122,7 @@ class EmergencyProtocolService {
 
       // 5. Preparar datos para enviar DESPUÉS de la grabación
       _protocolData = {
-        'audio': 'no implementado aun',
+        'audio': 'grabando...', // Se actualizará cuando termine la grabación
         'latitud': location['latitude'],
         'longitud': location['longitude'],
         'numero': userConfig['phoneNumber'],
@@ -136,28 +145,14 @@ class EmergencyProtocolService {
       // 7. Iniciar grabación inmediatamente
       await _startRecordingWithTimer(userConfig['audioDuration']);
 
-      // 8. Mostrar notificación en la app actual
-      if (_globalContext != null) {
+      // 8. Mostrar notificación en la app actual SOLO si es activación manual
+      if (_globalContext != null && !fromShake && !fromDecibel) {
         try {
-          String message;
-          Color backgroundColor;
-          
-          if (fromShake) {
-            message = '🚨 Protocolo activado por sacudida detectada';
-            backgroundColor = Colors.deepOrange;
-          } else if (fromDecibel) {
-            message = '🚨 Protocolo activado por nivel de ruido alto';
-            backgroundColor = Colors.purple;
-          } else {
-            message = '🚨 Protocolo de emergencia iniciado';
-            backgroundColor = Colors.orange;
-          }
-          
           ScaffoldMessenger.of(_globalContext!).showSnackBar(
-            SnackBar(
-              content: Text(message),
-              backgroundColor: backgroundColor,
-              duration: const Duration(seconds: 3),
+            const SnackBar(
+              content: Text('🚨 Protocolo de emergencia iniciado'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
             ),
           );
         } catch (e) {
@@ -173,16 +168,17 @@ class EmergencyProtocolService {
       } else {
         logMessage = "manualmente";
       }
-      
+
       AuditLogger.log('Protocolo de emergencia iniciado $logMessage');
 
       return {
         'success': true,
-        'message': fromShake 
-            ? 'Protocolo activado por sacudida detectada'
-            : (fromDecibel 
-                ? 'Protocolo activado por nivel de ruido alto'
-                : 'Protocolo de emergencia iniciado'),
+        'message':
+            fromShake
+                ? 'Protocolo activado por sacudida detectada'
+                : (fromDecibel
+                    ? 'Protocolo activado por nivel de ruido alto'
+                    : 'Protocolo de emergencia iniciado'),
         'audioDuration': userConfig['audioDuration'],
       };
     } catch (e) {
@@ -214,12 +210,48 @@ class EmergencyProtocolService {
       _removeCancelOverlay();
       final recordingPath = await _audioRecorder.stopRecording();
 
-      // 2. AHORA sí enviar todos los datos a Firebase
+      // 2. Subir audio usando servicios gratuitos
+      String? audioUrl;
+      if (recordingPath != null && FreeFileUploadService.isValidAudioFile(recordingPath)) {
+        try {
+          // Mostrar progreso de subida SOLO si la app está activa
+          if (_globalContext != null) {
+            ScaffoldMessenger.of(_globalContext!).showSnackBar(
+              const SnackBar(
+                content: Text('📤 Subiendo audio...'),
+                backgroundColor: Colors.blue,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+
+          audioUrl = await FreeFileUploadService.uploadAudioFile(recordingPath);
+          print('✅ Audio subido exitosamente: $audioUrl');
+          
+        } catch (e) {
+          print('❌ Error subiendo audio: $e');
+          audioUrl = 'Error al subir audio: $e';
+        }
+      } else {
+        audioUrl = 'No se pudo grabar el audio o archivo inválido';
+        print('⚠️ Archivo de audio no válido: $recordingPath');
+      }
+
+      // 3. Actualizar datos del protocolo con la URL del audio
+      if (_protocolData != null) {
+        _protocolData!['audio'] = audioUrl ?? 'No disponible';
+        _protocolData!['audioPath'] = recordingPath ?? 'No disponible';
+      }
+
+      // 4. Enviar todos los datos a Firebase
       if (_protocolData != null) {
         await _saveEmergencyData(_protocolData!);
       }
 
-      // 3. Limpiar estado DESPUÉS de enviar datos
+      // 5. Enviar mensajes de WhatsApp con toda la información incluyendo el audio
+      await _sendWhatsAppMessages(_protocolData!, audioUrl);
+
+      // 6. Limpiar estado DESPUÉS de enviar datos
       _isProtocolActive = false;
       final protocolData = _protocolData;
       _protocolData = null;
@@ -231,18 +263,18 @@ class EmergencyProtocolService {
         'EmergencyProtocolService: Protocol stopped successfully, state set to: $_isProtocolActive',
       );
 
-      // 4. Mostrar diálogo de completado si hay contexto
+      // 7. Mostrar diálogo de completado si hay contexto
       if (_globalContext != null && protocolData != null) {
-        // Usar un delay para asegurar que el contexto esté disponible
         Future.delayed(const Duration(milliseconds: 100), () {
-          _showProtocolCompleteDialog(recordingPath, protocolData);
+          _showProtocolCompleteDialog(recordingPath, protocolData, audioUrl);
         });
       }
 
       return {
         'success': true,
-        'message': 'Protocolo completado y datos enviados a Firebase',
+        'message': 'Protocolo completado, audio enviado y WhatsApp activado',
         'recordingPath': recordingPath,
+        'audioUrl': audioUrl,
         'data': protocolData,
       };
     } catch (e) {
@@ -280,13 +312,14 @@ class EmergencyProtocolService {
       _currentRecordingDuration = 0;
       _notifyStateChange();
 
-      // 3. Mostrar notificación de cancelación
+      // 3. Mostrar notificación de cancelación SOLO si la app está activa
       if (_globalContext != null) {
         try {
           ScaffoldMessenger.of(_globalContext!).showSnackBar(
             const SnackBar(
               content: Text('❌ Protocolo de emergencia cancelado'),
               backgroundColor: Colors.blue,
+              duration: Duration(seconds: 2),
             ),
           );
         } catch (e) {
@@ -314,31 +347,35 @@ class EmergencyProtocolService {
 
   void _showGlobalCancelOverlay() {
     if (_globalContext == null) {
-      print('EmergencyProtocolService: No global context available for overlay');
+      print(
+        'EmergencyProtocolService: No global context available for overlay',
+      );
       return;
     }
-    
+
     // Remover overlay anterior si existe
     _removeCancelOverlay();
-    
+
     try {
-      String activationSource = _protocolData?['activatedBy'] ?? 'manual_activation';
+      String activationSource =
+          _protocolData?['activatedBy'] ?? 'manual_activation';
       bool fromShake = activationSource == 'shake_detection';
       bool fromDecibel = activationSource == 'decibel_detection';
-      
+
       _cancelOverlay = OverlayEntry(
-        builder: (context) => _CancelProtocolOverlay(
-          onCancel: () async {
-            await cancelEmergencyProtocol();
-          },
-          onDismiss: _removeCancelOverlay,
-          recordingDuration: _currentRecordingDuration,
-          maxDuration: _maxRecordingDuration,
-          activatedByShake: fromShake,
-          activatedByDecibel: fromDecibel,
-        ),
+        builder:
+            (context) => _CancelProtocolOverlay(
+              onCancel: () async {
+                await cancelEmergencyProtocol();
+              },
+              onDismiss: _removeCancelOverlay,
+              recordingDuration: _currentRecordingDuration,
+              maxDuration: _maxRecordingDuration,
+              activatedByShake: fromShake,
+              activatedByDecibel: fromDecibel,
+            ),
       );
-      
+
       Overlay.of(_globalContext!).insert(_cancelOverlay!);
       print('EmergencyProtocolService: Cancel overlay inserted successfully');
     } catch (e) {
@@ -359,13 +396,13 @@ class EmergencyProtocolService {
     }
   }
 
-  void _showProtocolCompleteDialog(String? path, Map<String, dynamic> data) {
+  void _showProtocolCompleteDialog(String? path, Map<String, dynamic> data, String? audioUrl) {
     if (_globalContext == null) return;
-    
+
     try {
       String activationSource = data['activatedBy'] ?? 'manual_activation';
       String activationText;
-      
+
       switch (activationSource) {
         case 'shake_detection':
           activationText = 'Sacudida';
@@ -376,45 +413,48 @@ class EmergencyProtocolService {
         default:
           activationText = 'Manual';
       }
-      
+
       showDialog(
         context: _globalContext!,
-        builder: (context) => AlertDialog(
-          title: const Text('🚨 Protocolo Completado'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Protocolo ejecutado exitosamente:',
-                style: TextStyle(fontWeight: FontWeight.bold),
+        builder:
+            (context) => AlertDialog(
+              title: const Text('🚨 Protocolo Completado'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Protocolo ejecutado exitosamente:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text('✅ Grabación de audio completada'),
+                  Text(audioUrl != null && !audioUrl.contains('Error') ? '✅ Audio subido (gratuito)' : '⚠️ Audio no disponible'),
+                  const Text('✅ Ubicación GPS obtenida'),
+                  const Text('✅ Datos enviados a Firebase'),
+                  const Text('✅ WhatsApp activado'),
+                  const SizedBox(height: 15),
+                  Text(
+                    '📍 Ubicación: ${data['latitud']?.toStringAsFixed(6)}, ${data['longitud']?.toStringAsFixed(6)}',
+                  ),
+                  Text('👤 Usuario: ${data['nombre']}'),
+                  Text('📱 Teléfono: ${data['numero']}'),
+                  Text('🔧 Activado por: $activationText'),
+                  const SizedBox(height: 10),
+                  if (audioUrl != null && !audioUrl.contains('Error'))
+                    Text(
+                      '🎵 Audio: ${audioUrl.length > 50 ? '${audioUrl.substring(0, 50)}...' : audioUrl}',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                ],
               ),
-              const SizedBox(height: 10),
-              const Text('✅ Grabación de audio completada'),
-              const Text('✅ Ubicación GPS obtenida'),
-              const Text('✅ Datos enviados a Firebase'),
-              const Text('✅ Timestamp registrado'),
-              const SizedBox(height: 15),
-              Text('📍 Ubicación: ${data['latitud']?.toStringAsFixed(6)}, ${data['longitud']?.toStringAsFixed(6)}'),
-              Text('👤 Usuario: ${data['nombre']}'),
-              Text('📱 Teléfono: ${data['numero']}'),
-              Text('🆔 ID: ${data['userId']}'),
-              Text('🔧 Activado por: $activationText'),
-              const SizedBox(height: 10),
-              if (path != null)
-                Text(
-                  'Audio: ${path.split('/').last}',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cerrar'),
                 ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cerrar'),
+              ],
             ),
-          ],
-        ),
       );
     } catch (e) {
       print('Error showing protocol complete dialog: $e');
@@ -452,7 +492,10 @@ class EmergencyProtocolService {
       // Iniciar timer personalizado para controlar la duración
       _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         _currentRecordingDuration++;
-        _notifyStateChange();
+        // Reducir la frecuencia de notificaciones de duración
+        if (_currentRecordingDuration % 5 == 0) {
+          _notifyStateChange();
+        }
 
         // Si se alcanza la duración máxima, detener automáticamente
         if (_currentRecordingDuration >= duration) {
@@ -483,40 +526,55 @@ class EmergencyProtocolService {
     _recordingTimer = null;
   }
 
+  // MODIFICADO: Buscar en colección "users" el campo "phone"
   Future<Map<String, dynamic>> _getUserConfiguration(String userId) async {
     try {
-      final doc =
-          await FirebaseFirestore.instance
-              .collection('info_usuario')
-              .doc(userId)
-              .get();
+      // Buscar en la colección "users" en lugar de "info_usuario"
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get();
+
+      // También buscar configuración de audio en "info_usuario"
+      final configDoc = await FirebaseFirestore.instance
+          .collection('info_usuario')
+          .doc(userId)
+          .get();
 
       int audioDuration = 30; // Duración predeterminada
       String phoneNumber = 'no registrado';
       String userName = 'Usuario';
+      List<String> emergencyContacts = [];
 
-      if (doc.exists) {
-        final data = doc.data()!;
+      // Obtener número de teléfono desde "users"
+      if (userDoc.exists) {
+        final userData = userDoc.data()!;
+        phoneNumber = userData['phone'] ?? 'no registrado';
+        userName = userData['name'] ?? userData['displayName'] ?? 'Usuario';
+        print('📱 Número encontrado en users: $phoneNumber');
+      }
 
-        // Obtener duración de audio (puede estar en diferentes campos)
+      // Obtener configuración de audio y contactos desde "info_usuario"
+      if (configDoc.exists) {
+        final configData = configDoc.data()!;
         audioDuration =
-            (data['AudioDuracion'] as num?)?.toInt() ??
-            (data['recordingDuration'] as num?)?.toInt() ??
+            (configData['AudioDuracion'] as num?)?.toInt() ??
+            (configData['recordingDuration'] as num?)?.toInt() ??
             30;
+        print('🎵 Duración de audio: $audioDuration segundos');
 
-        // Obtener número de teléfono
-        phoneNumber =
-            data['phoneNumber'] ??
-            data['telefono'] ??
-            data['phone'] ??
-            'no registrado';
+        // Obtener contactos de emergencia
+        for (int i = 1; i <= 10; i++) {
+          final contactPhone = configData['EmergencyContact${i}Phone'];
+          if (contactPhone != null && contactPhone.toString().isNotEmpty && contactPhone != 'No configurado') {
+            emergencyContacts.add(contactPhone.toString());
+          }
+        }
+      }
 
-        // Obtener nombre del usuario
-        userName =
-            data['displayName'] ??
-            data['nombre'] ??
-            data['name'] ??
-            FirebaseAuth.instance.currentUser?.displayName ??
+      // Si no se encontró nombre en users, usar el de Firebase Auth
+      if (userName == 'Usuario') {
+        userName = FirebaseAuth.instance.currentUser?.displayName ??
             FirebaseAuth.instance.currentUser?.email ??
             'Usuario';
       }
@@ -525,6 +583,7 @@ class EmergencyProtocolService {
         'audioDuration': audioDuration,
         'phoneNumber': phoneNumber,
         'userName': userName,
+        'emergencyContacts': emergencyContacts,
       };
     } catch (e) {
       print('Error obteniendo configuración del usuario: $e');
@@ -532,6 +591,7 @@ class EmergencyProtocolService {
         'audioDuration': 30,
         'phoneNumber': 'no registrado',
         'userName': FirebaseAuth.instance.currentUser?.email ?? 'Usuario',
+        'emergencyContacts': <String>[],
       };
     }
   }
@@ -577,6 +637,170 @@ class EmergencyProtocolService {
       print('Datos de emergencia guardados exitosamente en Firebase');
     } catch (e) {
       throw Exception('Error al guardar datos de emergencia: $e');
+    }
+  }
+
+  // Método simplificado que intenta abrir WhatsApp directamente
+  Future<bool> _tryOpenWhatsApp(String phoneNumber, String message) async {
+    // Lista de URLs a probar en orden de preferencia
+    List<String> urlsToTry = [
+      'https://wa.me/$phoneNumber?text=${Uri.encodeComponent(message)}',
+      'https://api.whatsapp.com/send?phone=$phoneNumber&text=${Uri.encodeComponent(message)}',
+      'whatsapp://send?phone=$phoneNumber&text=${Uri.encodeComponent(message)}',
+    ];
+
+    for (String url in urlsToTry) {
+      try {
+        print('🔄 Intentando abrir: $url');
+        
+        // Intentar abrir directamente sin verificar canLaunchUrlString
+        await launchUrlString(
+          url,
+          mode: LaunchMode.externalApplication,
+        );
+        
+        print('✅ WhatsApp abierto exitosamente con: $url');
+        return true;
+      } catch (e) {
+        print('❌ Error con URL $url: $e');
+        continue;
+      }
+    }
+    
+    print('❌ No se pudo abrir WhatsApp con ninguna URL');
+    return false;
+  }
+
+  // Método para limpiar y validar número de teléfono
+  String _cleanPhoneNumber(String phoneNumber) {
+    // Remover espacios, guiones, paréntesis, etc.
+    String cleaned = phoneNumber.replaceAll(RegExp(r'[^\d+]'), '');
+    
+    // Si no tiene código de país, agregar +56 (Chile) como ejemplo
+    // Puedes cambiar esto según tu país
+    if (!cleaned.startsWith('+') && cleaned.length >= 8) {
+      // Cambiar +56 por tu código de país
+      cleaned = '+56$cleaned';
+    }
+    
+    return cleaned;
+  }
+
+  // MODIFICADO: Método para enviar mensajes de WhatsApp con audio incluido (GRATUITO)
+  Future<void> _sendWhatsAppMessages(Map<String, dynamic> protocolData, String? audioUrl) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      // Obtener contactos de emergencia de Firebase
+      final doc = await FirebaseFirestore.instance
+          .collection('info_usuario')
+          .doc(user.uid)
+          .get();
+
+      if (!doc.exists) {
+        print('No se encontró información del usuario para enviar WhatsApp');
+        return;
+      }
+
+      final data = doc.data()!;
+      List<String> emergencyContacts = [];
+
+      // Recopilar todos los contactos de emergencia
+      for (int i = 1; i <= 10; i++) {
+        final contactPhone = data['EmergencyContact${i}Phone'];
+        if (contactPhone != null && contactPhone.toString().isNotEmpty && contactPhone != 'No configurado') {
+          emergencyContacts.add(contactPhone.toString());
+        }
+      }
+
+      if (emergencyContacts.isEmpty) {
+        print('No hay contactos de emergencia configurados para WhatsApp');
+        return;
+      }
+
+      // Crear mensaje detallado con audio incluido
+      String activationSource = protocolData['activatedBy'] ?? 'manual_activation';
+      String activationText;
+
+      switch (activationSource) {
+        case 'shake_detection':
+          activationText = 'sacudida';
+          break;
+        case 'decibel_detection':
+          activationText = 'ruido alto';
+          break;
+        default:
+          activationText = 'manual';
+      }
+
+      // NUEVO: Mensaje con audio incluido (usando servicios gratuitos)
+      String emergencyMessage;
+      
+      if (audioUrl != null && !audioUrl.contains('Error')) {
+        emergencyMessage = '''🚨 EMERGENCIA 🚨
+${protocolData['nombre']} necesita ayuda.
+
+📍 Ubicación: https://maps.google.com/?q=${protocolData['latitud']},${protocolData['longitud']}
+
+📱 ${protocolData['numero']}
+⏰ ${DateTime.now().toString().substring(0, 16)}
+🔧 Activado por: $activationText
+
+🎵 Audio de emergencia: $audioUrl
+
+¡Contacta inmediatamente!''';
+      } else {
+        emergencyMessage = '''🚨 EMERGENCIA 🚨
+${protocolData['nombre']} necesita ayuda.
+
+📍 Ubicación: https://maps.google.com/?q=${protocolData['latitud']},${protocolData['longitud']}
+
+📱 ${protocolData['numero']}
+⏰ ${DateTime.now().toString().substring(0, 16)}
+🔧 Activado por: $activationText
+
+❌ Audio no disponible
+
+¡Contacta inmediatamente!''';
+      }
+
+      int successCount = 0;
+      int failCount = 0;
+
+      print('📱 Iniciando envío de WhatsApp a ${emergencyContacts.length} contactos...');
+      if (audioUrl != null && !audioUrl.contains('Error')) {
+        print('🎵 Audio incluido: $audioUrl');
+      }
+
+      // Enviar a todos los contactos
+      for (final phoneNumber in emergencyContacts) {
+        try {
+          String cleanPhone = _cleanPhoneNumber(phoneNumber);
+          print('📞 Procesando contacto: $phoneNumber -> $cleanPhone');
+
+          bool sent = await _tryOpenWhatsApp(cleanPhone, emergencyMessage);
+          
+          if (sent) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+
+          // Pausa entre mensajes para evitar problemas
+          await Future.delayed(const Duration(milliseconds: 2000));
+        } catch (e) {
+          failCount++;
+          print('❌ Error general enviando a $phoneNumber: $e');
+        }
+      }
+
+      print('📊 Resultado WhatsApp: $successCount exitosos, $failCount fallidos de ${emergencyContacts.length} contactos');
+      if (audioUrl != null && !audioUrl.contains('Error')) {
+        print('🎵 Audio incluido en mensajes: $audioUrl');
+      }
+    } catch (e) {
+      print('❌ Error enviando mensajes de WhatsApp: $e');
     }
   }
 
@@ -646,21 +870,13 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
       vsync: this,
     );
 
-    _scaleAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.elasticOut,
-    ));
+    _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
+    );
 
-    _opacityAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeIn,
-    ));
+    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
+    );
 
     _animationController.forward();
     _startCountdown();
@@ -672,11 +888,11 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
         timer.cancel();
         return;
       }
-      
+
       setState(() {
         _countdown--;
       });
-      
+
       // Solo cerrar cuando llegue exactamente a 0
       if (_countdown <= 0) {
         timer.cancel();
@@ -706,7 +922,7 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
     String title;
     IconData iconData;
     Color iconColor;
-    
+
     if (widget.activatedByShake) {
       title = '🚨 Protocolo Activado por Sacudida';
       iconData = Icons.vibration;
@@ -760,14 +976,10 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                             color: iconColor.withOpacity(0.1),
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(
-                            iconData,
-                            size: 40,
-                            color: iconColor,
-                          ),
+                          child: Icon(iconData, size: 40, color: iconColor),
                         ),
                         const SizedBox(height: 20),
-                        
+
                         Text(
                           title,
                           style: const TextStyle(
@@ -778,10 +990,13 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 12),
-                        
+
                         // Información de grabación
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.red.shade50,
                             borderRadius: BorderRadius.circular(10),
@@ -796,7 +1011,7 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                           ),
                         ),
                         const SizedBox(height: 12),
-                        
+
                         Text(
                           'Se cerrará automáticamente en $_countdown segundos',
                           style: const TextStyle(
@@ -806,7 +1021,7 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 20),
-                        
+
                         // Contador visual
                         Container(
                           width: 60,
@@ -827,7 +1042,7 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                           ),
                         ),
                         const SizedBox(height: 24),
-                        
+
                         // Botón de cancelar
                         SizedBox(
                           width: double.infinity,
@@ -853,9 +1068,9 @@ class _CancelProtocolOverlayState extends State<_CancelProtocolOverlay>
                             ),
                           ),
                         ),
-                        
+
                         const SizedBox(height: 12),
-                        
+
                         const Text(
                           'Si no cancelas, el protocolo continuará automáticamente',
                           style: TextStyle(

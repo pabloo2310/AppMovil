@@ -28,22 +28,36 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       try {
-        final doc =
-            await FirebaseFirestore.instance
-                .collection('users')
-                .doc(user.uid)
-                .get();
+        final doc = await FirebaseFirestore.instance
+            .collection('info_usuario')
+            .doc(user.uid)
+            .get();
 
         if (doc.exists) {
           final data = doc.data()!;
           setState(() {
             contacts.clear(); // Clear existing contacts
 
-            // Fetch mandatory emergency contact
-            if (data.containsKey('emergencyContact')) {
+            // Cargar todos los contactos de emergencia (hasta 10)
+            for (int i = 1; i <= 10; i++) {
+              final contactName = data['EmergencyContact${i}Name'];
+              final contactPhone = data['EmergencyContact${i}Phone'];
+              
+              if (contactName != null && contactPhone != null && 
+                  contactName.toString().isNotEmpty && contactPhone.toString().isNotEmpty &&
+                  contactPhone != 'No configurado') {
+                contacts.add({
+                  'name': contactName.toString(),
+                  'number': contactPhone.toString(),
+                });
+              }
+            }
+
+            // Si no hay contactos, agregar uno por defecto para empezar
+            if (contacts.isEmpty) {
               contacts.add({
                 'name': 'Contacto de Emergencia',
-                'number': data['emergencyContact'],
+                'number': 'No configurado',
               });
             }
 
@@ -51,12 +65,23 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
           });
         } else {
           setState(() {
+            // Si no existe el documento, crear un contacto por defecto
+            contacts.clear();
+            contacts.add({
+              'name': 'Contacto de Emergencia',
+              'number': 'No configurado',
+            });
             _isLoading = false;
           });
         }
       } catch (e) {
         print('Error loading emergency contacts: $e');
         setState(() {
+          contacts.clear();
+          contacts.add({
+            'name': 'Contacto de Emergencia',
+            'number': 'No configurado',
+          });
           _isLoading = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
@@ -68,6 +93,11 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
       }
     } else {
       setState(() {
+        contacts.clear();
+        contacts.add({
+          'name': 'Contacto de Emergencia',
+          'number': 'No configurado',
+        });
         _isLoading = false;
       });
     }
@@ -85,42 +115,35 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
       return;
     }
 
-    // Validar que al menos un contacto de emergencia esté configurado
-    if (contacts.every((contact) => contact['number'] == 'No configurado')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Debe agregar al menos un contacto de emergencia'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
     setState(() {
       _isSaving = true;
     });
 
     try {
-      // Update the logic to save additional contacts in the 'info_usuario' collection
+      // Preparar datos para guardar
+      Map<String, dynamic> contactsData = {};
+      
+      for (int i = 0; i < contacts.length; i++) {
+        final contact = contacts[i];
+        final index = i + 1;
+        
+        contactsData['EmergencyContact${index}Name'] = contact['name'];
+        contactsData['EmergencyContact${index}Phone'] = contact['number'];
+      }
+
+      // Limpiar contactos que ya no existen (hasta 10)
+      for (int i = contacts.length + 1; i <= 10; i++) {
+        contactsData['EmergencyContact${i}Name'] = FieldValue.delete();
+        contactsData['EmergencyContact${i}Phone'] = FieldValue.delete();
+      }
+
+      // Agregar timestamp
+      contactsData['EmergencyContactsTimestamp'] = FieldValue.serverTimestamp();
+
       await FirebaseFirestore.instance
           .collection('info_usuario')
           .doc(user.uid)
-          .set({
-            'EmergencyContact1Name': contacts[0]['name'],
-            'EmergencyContact1Phone': contacts[0]['number'],
-            ...contacts
-                .asMap()
-                .entries
-                .skip(1)
-                .map((entry) {
-                  final idx = entry.key + 1;
-                  return {
-                    'EmergencyContact${idx}Name': entry.value['name'],
-                    'EmergencyContact${idx}Phone': entry.value['number'],
-                  };
-                })
-                .reduce((a, b) => a..addAll(b)),
-          }, SetOptions(merge: true));
+          .set(contactsData, SetOptions(merge: true));
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
